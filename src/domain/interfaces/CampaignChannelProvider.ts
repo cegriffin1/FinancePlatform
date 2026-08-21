@@ -4,33 +4,47 @@ import type {
   GrowthCampaign,
 } from "@/domain/types/campaign-engine";
 import type { UUID } from "@/domain/types/base";
+import type {
+  ChannelCapability,
+  ChannelProviderConfig,
+  NormalizedCampaignMetrics,
+  ProviderAccount,
+  ProviderCampaignSummary,
+  ProviderMode,
+} from "@/domain/types/social-integrations";
 
 export type ChannelConnectionContext = {
   organizationId: UUID;
   connectedAccountId: UUID;
-};
-
-export type ChannelCampaignMetrics = {
-  spend_cents: number;
-  clicks: number;
-  impressions: number;
-  leads: number;
-  qualified_leads: number;
-  appointments: number;
-  conversions: number;
-  revenue_cents: number;
+  mode?: ProviderMode;
 };
 
 /**
- * Adapter boundary for social/ad/email/SMS publishers.
- * Live APIs are not required in Phase 1 — use mocked providers.
+ * Adapter boundary for social/ad publishers.
+ * Vendor responses must be normalized before leaving the provider.
  */
 export interface CampaignChannelProvider {
   readonly provider: CampaignChannelKey;
-  validateConnection(ctx: ChannelConnectionContext): Promise<{ ok: boolean; message: string }>;
+  readonly capabilities: ChannelCapability;
+
+  connectAccount(
+    organizationId: UUID,
+    authCode: string,
+  ): Promise<{ connectionId: UUID; accounts: ProviderAccount[] }>;
+  disconnectAccount(organizationId: UUID, connectionId: UUID): Promise<void>;
+  validateConnection(
+    ctx: ChannelConnectionContext,
+  ): Promise<{ ok: boolean; message: string }>;
+  refreshCredentials(organizationId: UUID, connectionId: UUID): Promise<void>;
+  getAccounts(organizationId: UUID): Promise<ProviderAccount[]>;
+  getCampaigns(
+    organizationId: UUID,
+    accountId: string,
+  ): Promise<ProviderCampaignSummary[]>;
   createCampaign(
     campaign: GrowthCampaign,
     ctx: ChannelConnectionContext,
+    channelConfig?: ChannelProviderConfig,
   ): Promise<CampaignChannelRun>;
   updateCampaign(
     run: CampaignChannelRun,
@@ -38,7 +52,16 @@ export interface CampaignChannelProvider {
   ): Promise<CampaignChannelRun>;
   pauseCampaign(run: CampaignChannelRun): Promise<CampaignChannelRun>;
   resumeCampaign(run: CampaignChannelRun): Promise<CampaignChannelRun>;
+  archiveCampaign(run: CampaignChannelRun): Promise<CampaignChannelRun>;
   getCampaignStatus(run: CampaignChannelRun): Promise<CampaignChannelRun["status"]>;
-  getMetrics(run: CampaignChannelRun): Promise<ChannelCampaignMetrics>;
+  getCampaignMetrics(run: CampaignChannelRun): Promise<NormalizedCampaignMetrics>;
+  /** @deprecated Prefer getCampaignMetrics */
+  getMetrics(run: CampaignChannelRun): Promise<NormalizedCampaignMetrics>;
+  getLeadForms(
+    organizationId: UUID,
+    accountId: string,
+  ): Promise<Array<{ id: string; name: string }>>;
+  syncLeads(run: CampaignChannelRun): Promise<{ synced: number; leadExternalIds: string[] }>;
+  /** @deprecated Prefer syncLeads */
   syncLeadEvents(run: CampaignChannelRun): Promise<{ synced: number }>;
 }

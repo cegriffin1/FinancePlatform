@@ -9,6 +9,11 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  PROVIDER_MODE: z.enum(["SIMULATION", "LIVE"]).default("SIMULATION"),
+  ALLOW_LIVE_AD_PUBLISH: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -20,6 +25,8 @@ export function getEnv(): AppEnv {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
     USE_MOCK_PROVIDERS: process.env.USE_MOCK_PROVIDERS ?? "false",
+    PROVIDER_MODE: process.env.PROVIDER_MODE ?? "SIMULATION",
+    ALLOW_LIVE_AD_PUBLISH: process.env.ALLOW_LIVE_AD_PUBLISH ?? "false",
   });
 }
 

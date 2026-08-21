@@ -151,10 +151,16 @@ export default function CampaignsPage() {
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-1">
                         <Link
-                          href={`/c/${campaign.organization_slug}/${campaign.slug}`}
+                          href={`/app/campaigns/${campaign.id}`}
                           className="text-xs font-semibold text-[var(--altus-blue)]"
                         >
                           View
+                        </Link>
+                        <Link
+                          href={`/c/${campaign.organization_slug}/${campaign.slug}`}
+                          className="text-xs font-semibold"
+                        >
+                          Public
                         </Link>
                         <button type="button" className="text-xs font-semibold" onClick={() => duplicate(campaign.id)}>
                           Duplicate

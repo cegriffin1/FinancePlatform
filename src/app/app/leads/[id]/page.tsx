@@ -80,9 +80,20 @@ export default function LeadDetailPage({
         <Card title="Campaign source">
           <Row label="Campaign" value={campaignName || lead.campaign_id.slice(0, 8)} />
           <Row label="Owner type" value={lead.owner_type} />
+          <Row label="Source" value={lead.attribution.ad_provider ?? lead.attribution.source ?? "—"} />
+          <Row
+            label="External campaign"
+            value={lead.attribution.external_campaign_id ?? "—"}
+          />
+          <Row label="Creative" value={lead.attribution.creative_id ?? "—"} />
           <Row label="UTM source" value={lead.attribution.utm_source ?? "—"} />
           <Row label="Landing page" value={lead.attribution.landing_page ?? "—"} />
           <Row label="Captured" value={new Date(lead.attribution.captured_at).toLocaleString()} />
+          <Row label="Lead score" value={String(lead.score)} />
+          <Row
+            label="Strategy"
+            value={lead.classifications[0]?.strategy_category ?? "—"}
+          />
         </Card>
         <Card title="Assignment">
           <Row label="Organization" value={orgName || lead.assigned_organization_id?.slice(0, 8) || "Unassigned pool"} />

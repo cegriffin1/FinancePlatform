@@ -36,6 +36,10 @@ export type PublicLeadSubmission = {
     referrer?: string | null;
     source_channel?: string | null;
     landing_page?: string | null;
+    ad_provider?: string | null;
+    external_campaign_id?: string | null;
+    external_ad_group_id?: string | null;
+    external_creative_id?: string | null;
   };
   submissionKey?: string;
 };
@@ -279,10 +283,10 @@ export function processPublicLeadSubmission(input: PublicLeadSubmission) {
     platform_campaign_id:
       campaign.owner_type === "ALTUS_PLATFORM_CAMPAIGN" ? campaign.id : null,
     owner_type: campaign.owner_type,
-    ad_provider: null,
-    external_campaign_id: null,
-    ad_set_id: null,
-    creative_id: null,
+    ad_provider: (input.attribution.ad_provider as LeadAttribution["ad_provider"]) ?? null,
+    external_campaign_id: input.attribution.external_campaign_id ?? null,
+    ad_set_id: input.attribution.external_ad_group_id ?? null,
+    creative_id: input.attribution.external_creative_id ?? null,
     source: input.attribution.source_channel ?? "campaign",
     medium: input.attribution.utm_medium ?? "simulation",
     utm_source: input.attribution.utm_source ?? null,

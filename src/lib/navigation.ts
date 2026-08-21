@@ -17,6 +17,11 @@ export const APP_NAV = [
     permission: null,
   },
   { href: "/app/settings", label: "Settings", permission: "organization.view" },
+  {
+    href: "/app/settings/integrations",
+    label: "Integrations",
+    permission: "organization.view",
+  },
 ] as const;
 
 export type AppNavItem = (typeof APP_NAV)[number];

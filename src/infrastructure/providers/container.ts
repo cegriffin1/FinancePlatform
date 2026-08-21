@@ -17,10 +17,14 @@ import {
 import { ConfigurableLeadClassificationService } from "@/application/classification/ConfigurableLeadClassificationService";
 import { ConfigurableLeadDistributionService } from "@/application/distribution/ConfigurableLeadDistributionService";
 import { InMemorySubscriptionEntitlementService } from "@/application/entitlements/InMemorySubscriptionEntitlementService";
-import { MOCK_CHANNEL_PROVIDERS } from "@/infrastructure/providers/channels/mockChannelProviders";
+import { SOCIAL_CHANNEL_PROVIDERS } from "@/infrastructure/providers/channels/mockChannelProviders";
+import { CampaignPublishingService } from "@/application/integrations/CampaignPublishingService";
+import { CampaignMetricsSyncService } from "@/application/integrations/CampaignMetricsSyncService";
+import { ensureIntegrationJobHandlers } from "@/application/integrations/registerJobs";
 
 /** Composition root — swap implementations without UI changes. */
 export function createProviderContainer() {
+  ensureIntegrationJobHandlers();
   return {
     leadScoring: new StubLeadScoringService(),
     leadRouting: new StubLeadRoutingService(),
@@ -37,6 +41,8 @@ export function createProviderContainer() {
     analytics: new StubAnalyticsProvider(),
     billing: new StubBillingProvider(),
     advancedMarkets: new StubAdvancedMarketsModule(),
-    channelProviders: MOCK_CHANNEL_PROVIDERS,
+    channelProviders: SOCIAL_CHANNEL_PROVIDERS,
+    campaignPublishing: new CampaignPublishingService(),
+    campaignMetricsSync: new CampaignMetricsSyncService(),
   };
 }
