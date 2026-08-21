@@ -1,0 +1,303 @@
+"use client";
+
+import { FormEvent, useMemo, useState } from "react";
+import { BUSINESS_GROWTH_ASSESSMENT_V1 } from "@/application/growth/assessmentTemplate";
+import { AltusMark } from "@/components/brand/AltusLogo";
+import { cn } from "@/lib/cn";
+
+type Props = {
+  organizationSlug: string;
+  campaignSlug: string;
+  headline: string;
+  support: string;
+  cta: string;
+  thankYou: string;
+  strategy: string;
+  brandingName: string;
+};
+
+export function PublicCampaignExperience(props: Props) {
+  const questions = BUSINESS_GROWTH_ASSESSMENT_V1.questions;
+  const [phase, setPhase] = useState<"hero" | "questions" | "contact" | "done">(
+    "hero",
+  );
+  const [index, setIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [appointmentRequested, setAppointmentRequested] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    score: number;
+    temperature: string;
+    strategies: string[];
+  } | null>(null);
+
+  const progress = useMemo(() => {
+    if (phase === "hero") return 0;
+    if (phase === "questions") return Math.round(((index + 1) / questions.length) * 70);
+    if (phase === "contact") return 85;
+    return 100;
+  }, [phase, index, questions.length]);
+
+  function attribution() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      utm_source: params.get("utm_source"),
+      utm_medium: params.get("utm_medium"),
+      utm_campaign: params.get("utm_campaign"),
+      utm_content: params.get("utm_content"),
+      referrer: document.referrer || null,
+      source_channel: params.get("channel") || "direct",
+      landing_page: window.location.pathname,
+    };
+  }
+
+  async function submit(contact: {
+    firstName: string;
+    lastName: string;
+    businessName: string;
+    email: string;
+    phone: string;
+    state: string;
+    preferredContact: string;
+    consent: boolean;
+  }, requestAppointment: boolean) {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/public/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationSlug: props.organizationSlug,
+          campaignSlug: props.campaignSlug,
+          answers,
+          contact,
+          appointmentRequested: requestAppointment,
+          attribution: attribution(),
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error ?? "Submission failed");
+      setResult({
+        score: json.score,
+        temperature: json.temperature,
+        strategies: json.strategies,
+      });
+      setAppointmentRequested(requestAppointment);
+      setPhase("done");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[var(--altus-section)]">
+      <header className="border-b border-[var(--altus-border)] bg-white">
+        <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-5">
+          <div className="flex items-center gap-2">
+            <AltusMark className="h-7 w-7" />
+            <div>
+              <div className="text-sm font-semibold tracking-wide">{props.brandingName}</div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--altus-text-secondary)]">
+                {props.strategy}
+              </div>
+            </div>
+          </div>
+          <div className="text-xs font-semibold text-[var(--altus-text-secondary)]">
+            ~{BUSINESS_GROWTH_ASSESSMENT_V1.estimatedMinutes} min
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[720px] px-5 py-8 md:py-12">
+        <div className="mb-4 h-2 overflow-hidden rounded-full bg-white">
+          <div className="h-full bg-[var(--altus-blue)] transition-all" style={{ width: `${progress}%` }} />
+        </div>
+
+        {phase === "hero" && (
+          <section className="overflow-hidden rounded-[14px] bg-[linear-gradient(145deg,#004C91,#0074C8)] p-8 text-white shadow-[var(--altus-shadow)]">
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-white/80">
+              FREE · NO ACCOUNT REQUIRED
+            </p>
+            <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight md:text-4xl">
+              {props.headline}
+            </h1>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/90">
+              {props.support}
+            </p>
+            <button
+              type="button"
+              className="mt-6 rounded-md bg-white px-4 py-2.5 text-sm font-semibold text-[var(--altus-blue)]"
+              onClick={() => setPhase("questions")}
+            >
+              {props.cta}
+            </button>
+          </section>
+        )}
+
+        {phase === "questions" && (
+          <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-6 shadow-[var(--altus-shadow)]">
+            <p className="text-xs font-semibold text-[var(--altus-text-secondary)]">
+              Question {index + 1} of {questions.length}
+            </p>
+            <h2 className="mt-2 text-xl font-bold text-[var(--altus-text)]">
+              {questions[index]!.prompt}
+            </h2>
+            <div className="mt-5 space-y-2">
+              {questions[index]!.options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    const key = questions[index]!.key;
+                    const next = { ...answers, [key]: option };
+                    setAnswers(next);
+                    if (index < questions.length - 1) setIndex(index + 1);
+                    else setPhase("contact");
+                  }}
+                  className={cn(
+                    "block w-full rounded-[10px] border px-4 py-3 text-left text-sm font-medium transition hover:border-[var(--altus-blue)]",
+                    answers[questions[index]!.key] === option
+                      ? "border-[var(--altus-blue)] bg-[var(--altus-soft)] text-[var(--altus-blue)]"
+                      : "border-[var(--altus-border)]",
+                  )}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {phase === "contact" && (
+          <ContactForm
+            error={error}
+            submitting={submitting}
+            onSubmit={async (contact, requestAppt) => {
+              await submit(contact, requestAppt);
+            }}
+          />
+        )}
+
+        {phase === "done" && result && (
+          <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-8 text-center shadow-[var(--altus-shadow)]">
+            <h2 className="text-2xl font-bold text-[var(--altus-text)]">You&apos;re all set</h2>
+            <p className="mt-2 text-sm text-[var(--altus-text-secondary)]">{props.thankYou}</p>
+            {appointmentRequested ? (
+              <p className="mt-3 text-sm font-semibold text-[var(--altus-blue)]">
+                Strategy conversation request received.
+              </p>
+            ) : null}
+            <p className="mt-6 text-xs text-[var(--altus-text-secondary)]">
+              Reference temperature: {result.temperature} · Internal processing complete
+            </p>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function ContactForm({
+  onSubmit,
+  submitting,
+  error,
+}: {
+  onSubmit: (
+    contact: {
+      firstName: string;
+      lastName: string;
+      businessName: string;
+      email: string;
+      phone: string;
+      state: string;
+      preferredContact: string;
+      consent: boolean;
+    },
+    appointmentRequested: boolean,
+  ) => Promise<void>;
+  submitting: boolean;
+  error: string | null;
+}) {
+  const [wantAppointment, setWantAppointment] = useState(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    await onSubmit(
+      {
+        firstName: String(form.get("firstName") ?? ""),
+        lastName: String(form.get("lastName") ?? ""),
+        businessName: String(form.get("businessName") ?? ""),
+        email: String(form.get("email") ?? ""),
+        phone: String(form.get("phone") ?? ""),
+        state: String(form.get("state") ?? "").toUpperCase(),
+        preferredContact: String(form.get("preferredContact") ?? "Email"),
+        consent: form.get("consent") === "on",
+      },
+      wantAppointment,
+    );
+  }
+
+  return (
+    <form
+      className="rounded-[12px] border border-[var(--altus-border)] bg-white p-6 shadow-[var(--altus-shadow)]"
+      onSubmit={(e) => void handleSubmit(e)}
+    >
+      <h2 className="text-xl font-bold text-[var(--altus-text)]">How can we reach you?</h2>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {[
+          ["firstName", "First name"],
+          ["lastName", "Last name"],
+          ["businessName", "Business name"],
+          ["email", "Email"],
+          ["phone", "Phone"],
+          ["state", "State (e.g. FL)"],
+        ].map(([name, label]) => (
+          <label key={name} className="block space-y-1 text-sm font-semibold">
+            {label}
+            <input
+              required
+              name={name}
+              className="w-full rounded-[8px] border border-[var(--altus-border)] px-3 py-2 text-sm font-normal"
+            />
+          </label>
+        ))}
+        <label className="block space-y-1 text-sm font-semibold sm:col-span-2">
+          Preferred contact method
+          <select name="preferredContact" className="w-full rounded-[8px] border border-[var(--altus-border)] px-3 py-2 text-sm font-normal">
+            <option>Email</option>
+            <option>Phone</option>
+            <option>SMS</option>
+          </select>
+        </label>
+      </div>
+      <label className="mt-4 flex items-start gap-2 text-sm text-[var(--altus-text-secondary)]">
+        <input required type="checkbox" name="consent" className="mt-1" />
+        I agree to be contacted about educational resources and scheduling options.
+      </label>
+      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded-md bg-[var(--altus-blue)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          onClick={() => setWantAppointment(true)}
+        >
+          Schedule My Strategy Conversation
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded-md border border-[var(--altus-border)] px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+          onClick={() => setWantAppointment(false)}
+        >
+          Submit without scheduling
+        </button>
+      </div>
+    </form>
+  );
+}

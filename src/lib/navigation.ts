@@ -11,6 +11,11 @@ export const APP_NAV = [
   { href: "/app/calendar", label: "Calendar", permission: null },
   { href: "/app/team", label: "Team", permission: "teams.view" },
   { href: "/app/reports", label: "Reports", permission: "reports.view_own" },
+  {
+    href: "/app/admin/lead-distribution",
+    label: "Distribution",
+    permission: null,
+  },
   { href: "/app/settings", label: "Settings", permission: "organization.view" },
 ] as const;
 
