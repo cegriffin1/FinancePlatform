@@ -1,11 +1,6 @@
-export type UUID = string;
+import type { AuditFields, UUID } from "@/domain/types/base";
 
-export type AuditFields = {
-  created_at: string;
-  updated_at: string;
-  created_by: UUID | null;
-  updated_by: UUID | null;
-};
+export type { AuditFields, UUID } from "@/domain/types/base";
 
 export type Organization = AuditFields & {
   id: UUID;
@@ -104,9 +99,18 @@ export type Invitation = AuditFields & {
 
 export type Campaign = AuditFields & {
   id: UUID;
-  organization_id: UUID;
+  organization_id: UUID | null;
   name: string;
-  status: "draft" | "published" | "paused" | "archived";
+  status:
+    | "draft"
+    | "review"
+    | "approved"
+    | "scheduled"
+    | "active"
+    | "paused"
+    | "completed"
+    | "archived"
+    | "published";
   description: string | null;
 };
 
@@ -120,6 +124,17 @@ export type Lead = AuditFields & {
   status: "new" | "qualified" | "working" | "converted" | "disqualified";
   score: number | null;
   source: string | null;
+  /** Configurable vocabulary; defaults include COLD/WARM/QUALIFIED/HOT/PRIORITY. */
+  temperature_key?: string | null;
+  lifecycle_status?: string | null;
+  qualification_session_id?: string | null;
+  score_version?: string | null;
+  fit_score?: number | null;
+  intent_score?: number | null;
+  engagement_score?: number | null;
+  platform_campaign_id?: string | null;
+  consent_captured?: boolean | null;
+  territory?: string | null;
 };
 
 export type Contact = AuditFields & {
@@ -174,6 +189,20 @@ export type Appointment = AuditFields & {
   ends_at: string;
   assigned_to: UUID | null;
   lead_id: UUID | null;
+  requested_at?: string | null;
+  status?:
+    | "requested"
+    | "scheduled"
+    | "confirmed"
+    | "attended"
+    | "cancelled"
+    | "rescheduled"
+    | "no_show"
+    | null;
+  attended_at?: string | null;
+  cancelled_at?: string | null;
+  no_show_at?: string | null;
+  rescheduled_from_id?: string | null;
 };
 
 export type Pipeline = AuditFields & {
@@ -191,3 +220,6 @@ export type PipelineStage = AuditFields & {
   position: number;
   probability: number | null;
 };
+
+export * from "@/domain/types/growth-engine";
+export * from "@/domain/types/campaign-engine";

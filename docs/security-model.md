@@ -54,3 +54,25 @@ Scoped permissions (`*_own`, `*_team`, `*_all`) further constrain row visibility
 ## Future identity
 
 Microsoft Entra ID may become an alternate IdP. Application authorization remains permission-based and org-scoped regardless of IdP.
+
+## Compliance architecture (Growth Engine / Advanced Markets)
+
+Because accelerators may touch insurance and financial services, design for:
+
+- Consent tracking and communication preferences
+- Opt-out enforcement before nurture/SMS/email
+- Audit logging of sensitive mutations and routing decisions
+- Data retention policies
+- Immutable lead provenance
+- Role-based access to lead intelligence
+- Licensing / territory controls as **eligibility inputs** (not regulatory determinations)
+- Compliance review workflow for campaigns and qualification versions
+- Versioned qualification and scoring logic
+
+**The software does not claim to determine regulatory eligibility.** Business and compliance rules must be configurable and human-reviewable.
+
+## Provenance & event integrity
+
+- `lead_provenance` is immutable after insert
+- `lead_events` are append-only
+- Marketplace redistribution (future) must copy provenance, never erase it

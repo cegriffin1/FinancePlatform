@@ -1,80 +1,71 @@
 # Campaign and Lead Flow
 
-## Target vertical slice
+## Product journey
 
 ```text
-Organization signup
-→ Organization setup
-→ Invite employee
-→ Employee joins organization
-→ Create campaign
-→ Publish landing page
-→ Business owner completes interactive assessment
-→ Lead is created
-→ Lead is scored
-→ Lead is assigned
-→ Employee sees lead
-→ Employee adds note/task
-→ Employee moves lead through pipeline
+Marketing → Campaign → Interactive Qualification → Lead Capture → Lead Intelligence
+→ Lead Scoring → Lead Classification → Appointment → Lead Routing → Agent/Advisor
+→ CRM → Follow-Up → Opportunity → Closing → Retention → Referral
 ```
 
-## Campaign → lead journey
+## Campaign → lead journey (expanded)
 
 ```mermaid
 sequenceDiagram
-  participant Owner as Org Owner
-  participant Mkt as Marketing User
-  participant Site as Landing Page
-  participant Prospect as Prospect
+  participant Prospect
+  participant Campaign
+  participant Qual as Qualification Engine
+  participant Events as Lead Events
   participant Score as LeadScoringService
+  participant Class as LeadClassificationService
   participant Route as LeadRoutingService
-  participant Rep as Sales / Employee
+  participant Agent
 
-  Owner->>Owner: Signup + org setup
-  Owner->>Rep: Invite employee (joins)
-  Mkt->>Mkt: Create campaign
-  Mkt->>Site: Publish landing page
-  Prospect->>Site: Complete assessment
-  Site->>Site: Create lead + contact
-  Site->>Score: Score lead
-  Score->>Route: Scored lead
-  Route->>Rep: Assign lead
-  Rep->>Rep: Add note / task
-  Rep->>Rep: Advance pipeline stage
+  Prospect->>Campaign: Click ad / landing
+  Campaign->>Events: campaign.clicked
+  Prospect->>Qual: Start Stage 1 (3–5 questions)
+  Qual->>Events: assessment.started / question.answered
+  Prospect->>Qual: Submit contact
+  Qual->>Events: contact.submitted + create lead + provenance
+  alt Abandon before schedule
+    Qual->>Events: abandoned / qualified_not_scheduled
+    Qual->>Qual: Enroll nurture if consented
+  else Schedule appointment
+    Prospect->>Events: appointment.scheduled
+  end
+  Events->>Score: Evaluate rule packs
+  Score->>Class: Classify strategies
+  Class->>Route: Route with eligibility
+  Route->>Agent: Assign lead
+  Agent->>Events: activities / follow-up
 ```
 
 ## Lead routing flow
 
 ```mermaid
 flowchart LR
-  A[Lead created] --> B{Scoring}
-  B --> C[Score + grade]
-  C --> D{Routing rules}
-  D -->|Own book| E[Assign to creator/owner]
-  D -->|Round robin| F[Assign to team queue]
-  D -->|Manager review| G[Assign to manager]
-  E --> H[Assignee workspace]
-  F --> H
-  G --> H
-  H --> I[Activities / Tasks]
-  I --> J[Pipeline stage updates]
+  A[Lead + events] --> B[Score + temperature]
+  B --> C[Strategy classifications]
+  C --> D{Routing policy}
+  D --> E{Territory / license eligible?}
+  E -->|No| F[Hold / pool / manager]
+  E -->|Yes| G[Assign agent / team]
+  G --> H[Agent workspace]
+  H --> I[Nurture or pipeline]
 ```
 
-## Foundation vs deferred
+## Campaign catalog (accelerator-supplied templates)
 
-| Capability | This milestone | Later |
-| --- | --- | --- |
-| Campaign / lead / opportunity tables | Schema + interfaces | Full UX |
-| `LeadScoringService` | Interface + stub | Rules engine |
-| `LeadRoutingService` | Interface + stub | Configurable routing |
-| Landing pages / assessments | Out of scope | Feature branch |
-| Pipeline UI | Placeholder nav | Feature branch |
+Org selects growth objective (e.g. Tax Strategy, Business Owner Planning, Executive Benefits, Estate, Retirement, General Protection) then configures:
 
-## Data touchpoints
+Campaign + Territory + Audience + Budget + Lead target + Qualification profile → campaign configuration from reusable templates.
 
-- `campaigns` — source of acquisition
-- `leads` — qualified interest records
-- `contacts` — people associated with leads/customers
-- `opportunities` — monetized pipeline records
-- `activities` / `tasks` — working the lead
-- `pipelines` / `pipeline_stages` — progression model
+## Foundation vs next builds
+
+| Capability | Status |
+| --- | --- |
+| Core tables + RLS | Foundation ✅ |
+| Domain intelligence interfaces | Architecture branch ✅ |
+| Stage 1 runtime + AM pack | Planned |
+| Scoring/routing engines | Interfaces + stubs; rules later |
+| Marketplace / payments | Abstracted only |

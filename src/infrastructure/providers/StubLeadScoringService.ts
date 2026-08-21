@@ -1,15 +1,33 @@
-import type { LeadScoringService } from "@/domain/interfaces/LeadScoringService";
-import type { Lead } from "@/domain/types";
+import type {
+  LeadScoreResult,
+  LeadScoringContext,
+  LeadScoringService,
+} from "@/domain/interfaces/LeadScoringService";
+import { ConfigurableLeadScoringService } from "@/application/scoring/ConfigurableLeadScoringService";
+import type { Lead, LeadEvent, LeadScoreSnapshot } from "@/domain/types";
+import type { LeadScoreBreakdown } from "@/domain/types/campaign-engine";
 
-/** Stub scorer — replace with rules/ML without changing callers. */
+/** Thin wrapper keeping the historical stub import path. */
 export class StubLeadScoringService implements LeadScoringService {
-  async score(lead: Lead) {
-    const score = lead.score ?? 50;
-    const grade = score >= 80 ? "A" : score >= 60 ? "B" : score >= 40 ? "C" : "D";
-    return {
-      score,
-      grade: grade as "A" | "B" | "C" | "D",
-      reasons: ["stub-scoring"],
-    };
+  private readonly engine = new ConfigurableLeadScoringService();
+
+  score(lead: Lead, context: LeadScoringContext): Promise<LeadScoreResult> {
+    return this.engine.score(lead, context);
+  }
+
+  applyEvent(
+    lead: Lead,
+    event: LeadEvent,
+    context: LeadScoringContext,
+  ): Promise<LeadScoreResult> {
+    return this.engine.applyEvent(lead, event, context);
+  }
+
+  snapshot(lead: Lead, result: LeadScoreResult): Promise<LeadScoreSnapshot> {
+    return this.engine.snapshot(lead, result);
+  }
+
+  toBreakdown(result: LeadScoreResult): LeadScoreBreakdown {
+    return this.engine.toBreakdown(result);
   }
 }

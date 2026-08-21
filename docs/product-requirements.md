@@ -1,8 +1,26 @@
-# Product Requirements — Platform Foundation
+# Product Requirements
 
-## Scope of this milestone
+## Milestone A — Platform foundation (complete)
 
-Deliver the architectural and operational foundation for the Growth OS. Do **not** ship the full campaign builder or lead assessment in this milestone.
+Deliver the architectural and operational foundation for the Growth OS. Do **not** ship the full campaign builder or lead assessment in that milestone.
+
+## Milestone B — Growth engine architecture (current)
+
+Expand product vision and domain contracts for Core + Advanced Markets accelerator. **Do not** implement the full Advanced Markets feature set in this milestone.
+
+### Milestone B in scope
+
+- Documentation for two-layer model, qualification, intelligence, monetization, compliance
+- Domain types/interfaces for events, scoring, classification, routing, territory, lifecycle, nurture, templates, billing abstractions
+- Additive migration plan
+- Architecture impact report
+
+### Milestone B out of scope
+
+- Full qualification UI / AM question copy finalization
+- Payments / marketplace implementation
+- Dynamics adapters
+- Autonomous AI recommendations
 
 ### In scope
 

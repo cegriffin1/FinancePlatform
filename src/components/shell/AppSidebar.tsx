@@ -12,9 +12,9 @@ export function AppSidebar({ orgName }: { orgName?: string }) {
     <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--line)] bg-[var(--bg-elevated)]/90 px-4 py-6 backdrop-blur">
       <div className="mb-8 px-2">
         <p className="text-xs uppercase tracking-[0.18em] text-[var(--ink-muted)]">
-          Growth OS
+          ALTUS
         </p>
-        <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl leading-none">
+        <h1 className="mt-2 font-semibold text-xl leading-none tracking-tight">
           {orgName ?? "Your organization"}
         </h1>
       </div>

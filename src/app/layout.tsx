@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
+import { Geist } from "next/font/google";
 import "./globals.css";
 
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Growth OS",
+  title: "ALTUS — Financial Intelligence",
   description:
-    "Multi-tenant Growth Operating System — campaigns to retention, industry-neutral core.",
+    "ALTUS helps business owners discover opportunities, assess readiness, explore strategies, and connect with professionals.",
 };
 
 export default function RootLayout({
@@ -14,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={`${geist.variable} antialiased`}>{children}</body>
     </html>
   );
 }

@@ -72,11 +72,27 @@ flowchart TB
   Copilot -.-> Func
 ```
 
+## Entity mapping (conceptual)
+
+| FinancePlatform | Microsoft |
+| --- | --- |
+| Lead (+ events/provenance) | Dataverse Lead (+ activities/timeline) |
+| Contact | Dataverse Contact |
+| Opportunity | Dynamics Opportunity |
+| Activities / tasks | Dataverse Activities |
+| Communication | Dynamics 365 Contact Center / ACS |
+| Agent (organization member) | Entra / Dynamics User |
+
+FinancePlatform remains the **orchestration and experience layer**. Dynamics is an adapter target — not a UI rewrite.
+
+Lead events and provenance should sync in a way that preserves original acquisition source.
+
 ## Adapter boundaries (do not implement yet)
 
 | Interface | Future Microsoft mapping |
 | --- | --- |
 | `CRMProvider` / lead/contact/opportunity repos | Dataverse + Dynamics 365 Sales entities |
+| `LeadEventRepository` | Dataverse timeline / custom activity entities |
 | `ContactCenterProvider` | Dynamics 365 Contact Center |
 | `CommunicationProvider` | Azure Communication Services |
 | `CalendarProvider` | Outlook / Dataverse appointments |

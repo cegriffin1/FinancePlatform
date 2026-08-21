@@ -106,3 +106,25 @@ flowchart TD
 - Unique `(organization_id, slug)` or similar natural keys where needed
 - Indexes on `organization_id` for all tenant tables
 - Indexes on foreign keys used in list/filter screens (`assigned_to`, `team_id`, `campaign_id`, `stage_id`)
+
+## Growth engine extensions (planned — additive)
+
+See [migration-plan-growth-engine.md](./migration-plan-growth-engine.md).
+
+```mermaid
+erDiagram
+  leads ||--o| lead_provenance : has
+  leads ||--o{ lead_events : timeline
+  leads ||--o{ lead_strategy_classifications : classified
+  leads ||--o{ lead_score_snapshots : scored
+  leads ||--o| qualification_sessions : from
+  qualification_templates ||--o{ qualification_questions : contains
+  qualification_questions ||--o{ qualification_branches : branches
+  organization_members ||--o{ agent_territories : covers
+  organization_members ||--o{ agent_licenses : declares
+  campaigns ||--o{ campaign_territories : targets
+  campaign_templates ||--o{ campaigns : instantiates
+  accelerator_modules ||--o{ organization_accelerators : enabled
+```
+
+**Rule:** do not add insurance-specific columns to core `leads`. Accelerators use templates, rule packs, and optional extension tables keyed by `module_key`.

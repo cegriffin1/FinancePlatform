@@ -2,7 +2,9 @@
 
 ## Overview
 
-The Growth Operating System is a Next.js App Router application with a clear separation between presentation, application services, domain contracts, and infrastructure adapters.
+FinancePlatform is a Next.js App Router Growth + Distribution Operating System with clear separation between presentation, application services, domain contracts, and infrastructure adapters.
+
+Product layers: **Core Platform** + **Industry Accelerators** (first: Advanced Markets). See [platform-layers.md](./platform-layers.md).
 
 ```mermaid
 flowchart TB
@@ -21,6 +23,7 @@ flowchart TB
     Repos[Repository Interfaces]
     DomainServices[Domain Service Interfaces]
     Providers[External Provider Interfaces]
+    Accelerators[Accelerator Module Registry]
   end
 
   subgraph Infrastructure["Infrastructure Adapters"]
@@ -28,6 +31,7 @@ flowchart TB
     SupabaseDB[Supabase PostgreSQL + RLS]
     SupabaseStorage[Supabase Storage]
     MockAdapters[Mock / Future Adapters]
+    AMPacks[Advanced Markets Packs]
   end
 
   UI --> Forms
@@ -37,6 +41,8 @@ flowchart TB
   AppServices --> Repos
   AppServices --> DomainServices
   AppServices --> Providers
+  Accelerators --> DomainServices
+  AMPacks --> Accelerators
   Repos --> SupabaseDB
   DomainServices --> SupabaseDB
   Providers --> MockAdapters
@@ -45,86 +51,70 @@ flowchart TB
 
 ## Layering rules
 
-1. **UI** renders state and collects input. No SQL, no permission math, no scoring/routing rules.
+1. **UI** renders state and collects input. No SQL, permission math, scoring, routing, or recycling rules.
 2. **Application services** orchestrate use cases and call domain interfaces.
-3. **Domain interfaces** define repositories, scoring/routing services, and external providers.
-4. **Infrastructure** implements interfaces (Supabase first; Dynamics/Dataverse later).
+3. **Domain interfaces** define repositories, intelligence services, and external providers.
+4. **Accelerators** register templates and rule packs; they do not fork core entities.
+5. **Infrastructure** implements interfaces (Supabase first; Dynamics/Dataverse later).
 
-## Domain interfaces (required)
+## Domain interfaces
 
-### Repositories
+### Repositories (core)
 
-- `OrganizationRepository`
-- `UserRepository`
-- `CampaignRepository`
-- `LeadRepository`
-- `ContactRepository`
-- `OpportunityRepository`
-- `ActivityRepository`
+- `OrganizationRepository`, `UserRepository`, `CampaignRepository`, `LeadRepository`, `ContactRepository`, `OpportunityRepository`, `ActivityRepository`
+- `LeadEventRepository`, `QualificationTemplateRepository`, `CampaignTemplateRepository`
 
-### Domain services
+### Domain services (core intelligence)
 
-- `LeadScoringService`
-- `LeadRoutingService`
+- `LeadScoringService` — event-driven, configurable rule packs
+- `LeadClassificationService` — strategy classifications
+- `LeadRoutingService` — eligibility-aware distribution
+- `TerritoryEligibilityService`
+- `LeadLifecyclePolicyService` — dormancy / recycle eligibility
+- `LeadNurtureService`
 
 ### External providers
 
-- `CommunicationProvider`
-- `CalendarProvider`
-- `CRMProvider`
-- `ContactCenterProvider`
-- `AnalyticsProvider`
+- `CommunicationProvider`, `CalendarProvider`, `CRMProvider`, `ContactCenterProvider`, `AnalyticsProvider`, `BillingProvider`
 
-## Supabase responsibilities (v1)
+### Accelerators
 
-| Concern | Implementation |
-| --- | --- |
-| Auth | Supabase Auth (email magic link / password as configured) |
-| Data | PostgreSQL via Supabase client (server preferred) |
-| Isolation | RLS policies keyed on organization membership |
-| Files | Supabase Storage with org-scoped paths |
-| Secrets | Service role key server-only |
-
-## Future Microsoft path
-
-Frontend continues to call the same domain interfaces. New adapters implement:
-
-- Dataverse / Dynamics entities via `CRMProvider` and repositories
-- Entra ID as an alternate identity source
-- Azure Communication Services behind `CommunicationProvider`
-- Contact Center behind `ContactCenterProvider`
-- Azure Functions / APIM for orchestration
-
-See [d365-future-state.md](./d365-future-state.md).
+- `AdvancedMarketsModule` registry / pack descriptors (not a separate app)
 
 ## Application structure
 
 ```text
 src/
-  app/                 # Next.js routes (App Router)
-  components/          # UI components (no business rules)
+  app/
+  components/
   domain/
-    interfaces/        # Repository & provider contracts
-    types/             # Shared domain types
-    permissions/       # Permission keys & role maps
-  application/         # Use-case services
+    interfaces/
+    types/
+    permissions/
+    accelerators/      # module keys + pack types
+  application/
   infrastructure/
-    supabase/          # Clients + repository implementations
-    providers/         # External provider stubs
-  lib/                 # Cross-cutting utilities
-  styles/              # Global styles / design tokens
-supabase/
-  migrations/          # SQL migrations + RLS
-docs/                  # Product & architecture docs
+    supabase/
+    providers/
+supabase/migrations/
+docs/
 ```
 
-## Auth & tenancy flow (high level)
+## Auth & tenancy
 
-1. User authenticates → Supabase session.
-2. Server resolves `profile` and active `organization_member`.
-3. Authorization service evaluates permission keys for the action.
-4. Queries always filter by `organization_id`; RLS enforces the same constraint.
+Unchanged: session → profile → organization_member → permissions; RLS on `organization_id`.
 
-## UI system
+## Dashboards (future UX; architecture-ready)
 
-Premium enterprise SaaS shell: strong typography, generous spacing, sophisticated cards, accessible color contrast, responsive layout, and first-class empty/loading/error states. Navigation destinations are present as placeholders until feature branches deepen them.
+**Agent:** today queue (new/hot/appointments/follow-ups/tasks), pipeline columns, lead detail (score, temperature, strategies, source, timeline, appointment, notes, tasks, communications).
+
+**Organization:** volume, quality distribution, campaign performance, response time, appointment/show rates, pipeline value, close rate, revenue attribution, agent/territory/strategy performance.
+
+## Related docs
+
+- [advanced-markets-module.md](./advanced-markets-module.md)
+- [qualification-engine.md](./qualification-engine.md)
+- [lead-intelligence.md](./lead-intelligence.md)
+- [monetization-and-marketplace.md](./monetization-and-marketplace.md)
+- [architecture-impact-advanced-markets.md](./architecture-impact-advanced-markets.md)
+- [d365-future-state.md](./d365-future-state.md)
