@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { AssessmentDecisionEngine } from "@/application/intelligence/assessmentDecision";
 import { BUSINESS_GROWTH_ASSESSMENT_V1 } from "@/application/growth/assessmentTemplate";
 import { AltusMark } from "@/components/brand/AltusLogo";
 import { cn } from "@/lib/cn";
@@ -16,28 +17,37 @@ type Props = {
   brandingName: string;
 };
 
+const engine = new AssessmentDecisionEngine();
+
 export function PublicCampaignExperience(props: Props) {
-  const questions = BUSINESS_GROWTH_ASSESSMENT_V1.questions;
   const [phase, setPhase] = useState<"hero" | "questions" | "contact" | "done">(
     "hero",
   );
-  const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [startedAt] = useState(() => new Date().toISOString());
   const [appointmentRequested, setAppointmentRequested] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState("");
   const [result, setResult] = useState<{
     score: number;
     temperature: string;
     strategies: string[];
   } | null>(null);
 
+  const ordered = useMemo(() => engine.getOrderedQuestions(answers), [answers]);
+  const current = engine.nextQuestion(answers);
+  const answeredCount = Object.keys(answers).length;
+
   const progress = useMemo(() => {
     if (phase === "hero") return 0;
-    if (phase === "questions") return Math.round(((index + 1) / questions.length) * 70);
+    if (phase === "questions") {
+      const total = Math.max(ordered.length, answeredCount + 1);
+      return Math.round(((answeredCount + 1) / total) * 70);
+    }
     if (phase === "contact") return 85;
     return 100;
-  }, [phase, index, questions.length]);
+  }, [phase, ordered.length, answeredCount]);
 
   function attribution() {
     const params = new URLSearchParams(window.location.search);
@@ -75,6 +85,8 @@ export function PublicCampaignExperience(props: Props) {
           contact,
           appointmentRequested: requestAppointment,
           attribution: attribution(),
+          honeypot,
+          submissionStartedAt: startedAt,
         }),
       });
       const json = await response.json();
@@ -138,29 +150,28 @@ export function PublicCampaignExperience(props: Props) {
           </section>
         )}
 
-        {phase === "questions" && (
+        {phase === "questions" && current && (
           <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-6 shadow-[var(--altus-shadow)]">
             <p className="text-xs font-semibold text-[var(--altus-text-secondary)]">
-              Question {index + 1} of {questions.length}
+              Question {answeredCount + 1}
             </p>
             <h2 className="mt-2 text-xl font-bold text-[var(--altus-text)]">
-              {questions[index]!.prompt}
+              {current.prompt}
             </h2>
             <div className="mt-5 space-y-2">
-              {questions[index]!.options.map((option) => (
+              {current.options.map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => {
-                    const key = questions[index]!.key;
-                    const next = { ...answers, [key]: option };
+                    const next = { ...answers, [current.key]: option };
                     setAnswers(next);
-                    if (index < questions.length - 1) setIndex(index + 1);
-                    else setPhase("contact");
+                    const following = engine.nextQuestion(next);
+                    if (!following) setPhase("contact");
                   }}
                   className={cn(
                     "block w-full rounded-[10px] border px-4 py-3 text-left text-sm font-medium transition hover:border-[var(--altus-blue)]",
-                    answers[questions[index]!.key] === option
+                    answers[current.key] === option
                       ? "border-[var(--altus-blue)] bg-[var(--altus-soft)] text-[var(--altus-blue)]"
                       : "border-[var(--altus-border)]",
                   )}
@@ -169,6 +180,16 @@ export function PublicCampaignExperience(props: Props) {
                 </button>
               ))}
             </div>
+            {/* honeypot — visually hidden from users */}
+            <label className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden">
+              Company website
+              <input
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </label>
           </section>
         )}
 

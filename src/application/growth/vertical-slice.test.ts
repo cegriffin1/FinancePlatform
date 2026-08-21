@@ -42,7 +42,7 @@ describe("strategy classification mapping", () => {
 });
 
 describe("platform vs subscriber ownership", () => {
-  it("distributes ALTUS platform leads to Premier when eligible", () => {
+  it("distributes ALTUS platform leads to Premier when eligible", async () => {
     const campaign = createSimCampaign({
       owner_type: "ALTUS_PLATFORM_CAMPAIGN",
       owner_id: "20000000-0000-4000-8000-000000000001",
@@ -64,7 +64,7 @@ describe("platform vs subscriber ownership", () => {
     });
     launchSimCampaign(campaign.id);
 
-    const { lead } = processPublicLeadSubmission({
+    const { lead } = await processPublicLeadSubmission({
       organizationSlug: "altus",
       campaignSlug: campaign.slug,
       answers: {
@@ -97,7 +97,7 @@ describe("platform vs subscriber ownership", () => {
     expect(Object.isFrozen(lead.attribution)).toBe(true);
   });
 
-  it("keeps subscriber campaign leads with the subscriber org", () => {
+  it("keeps subscriber campaign leads with the subscriber org", async () => {
     const campaign = createSimCampaign({
       owner_type: "SUBSCRIBER_CAMPAIGN",
       owner_id: "20000000-0000-4000-8000-000000000003",
@@ -119,7 +119,7 @@ describe("platform vs subscriber ownership", () => {
     });
     launchSimCampaign(campaign.id);
 
-    const { lead } = generateTestLead(campaign.id);
+    const { lead } = await generateTestLead(campaign.id);
     expect(lead.owner_type).toBe("SUBSCRIBER_CAMPAIGN");
     expect(lead.distribution_status).toBe("subscriber_owned");
     expect(lead.assigned_organization_id).toBe(

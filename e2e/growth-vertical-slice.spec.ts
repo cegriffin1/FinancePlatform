@@ -37,7 +37,7 @@ test("subscriber campaign vertical slice", async ({ request }) => {
   const detail = await request.get(`/api/leads/${leadJson.leadId}`);
   expect(detail.ok()).toBeTruthy();
   const detailJson = await detail.json();
-  expect(detailJson.lead.business_name).toBe("Acme Manufacturing");
+  expect(detailJson.lead.business_name).toBe("Reed Logistics LLC");
   expect(detailJson.events.length).toBeGreaterThan(3);
   expect(detailJson.lead.score).toBeGreaterThan(0);
 });

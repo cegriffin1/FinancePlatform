@@ -9,6 +9,14 @@ import type {
   SubscriptionTier,
 } from "@/domain/types/campaign-engine";
 import type { LeadEvent, StrategyClassification } from "@/domain/types";
+import type {
+  LeadIntelligenceProfile,
+  LeadSlaTimers,
+  LeadOutcome,
+  PipelineStage,
+  LeadScoreSnapshotRecord,
+  ReservationStatus,
+} from "@/domain/types/lead-intelligence";
 
 export type SimOrganization = {
   id: UUID;
@@ -54,7 +62,17 @@ export type SimLead = {
   campaign_id: UUID;
   platform_campaign_id: UUID | null;
   owner_type: CampaignOwnerType;
-  status: "new" | "qualified" | "working" | "unassigned_pool" | "converted";
+  status:
+    | "new"
+    | "qualified"
+    | "working"
+    | "unassigned_pool"
+    | "converted"
+    | "review"
+    | "rejected"
+    | "nurture"
+    | "scoring_pending"
+    | "distribution_pending";
   temperature_key: string;
   score: number;
   fit_score: number;
@@ -76,9 +94,34 @@ export type SimLead = {
   attribution: LeadAttribution;
   classifications: StrategyClassification[];
   distribution: LeadDistributionDecision | null;
-  distribution_status: "pending" | "assigned" | "unassigned_pool" | "subscriber_owned";
+  distribution_status:
+    | "pending"
+    | "assigned"
+    | "unassigned_pool"
+    | "subscriber_owned"
+    | "held"
+    | "nurture";
   created_at: string;
   updated_at: string;
+  intelligence?: LeadIntelligenceProfile;
+  score_snapshots?: LeadScoreSnapshotRecord[];
+  sla?: LeadSlaTimers;
+  pipeline_stage?: PipelineStage;
+  stage_history?: Array<{ stage: PipelineStage; at: string }>;
+  outcome?: LeadOutcome | null;
+  outcome_reason?: string | null;
+  opportunity_value_cents?: number | null;
+  closed_value_cents?: number | null;
+  closed_at?: string | null;
+  reservation_status?: ReservationStatus;
+  reserved_until?: string | null;
+  reserved_by_org_id?: string | null;
+  parent_lead_id?: string | null;
+  processing_flags?: {
+    scoring_pending?: boolean;
+    distribution_pending?: boolean;
+    notification_pending?: boolean;
+  };
 };
 
 export type SimNotification = {

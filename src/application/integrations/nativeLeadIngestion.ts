@@ -112,7 +112,7 @@ export async function ingestNativeProviderLead(payload: NativeLeadPayload) {
     error: null,
   });
 
-  const result = processPublicLeadSubmission({
+  const result = await processPublicLeadSubmission({
     organizationSlug: campaign.organization_slug,
     campaignSlug: campaign.slug,
     answers: payload.answers ?? {

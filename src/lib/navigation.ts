@@ -16,6 +16,16 @@ export const APP_NAV = [
     label: "Distribution",
     permission: null,
   },
+  {
+    href: "/app/analytics/lead-quality",
+    label: "Lead Quality",
+    permission: "reports.view_own",
+  },
+  {
+    href: "/app/admin/lead-quality",
+    label: "QC Admin",
+    permission: null,
+  },
   { href: "/app/settings", label: "Settings", permission: "organization.view" },
   {
     href: "/app/settings/integrations",

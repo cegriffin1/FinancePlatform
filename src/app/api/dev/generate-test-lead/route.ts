@@ -10,12 +10,13 @@ export async function POST(request: Request) {
 
   try {
     const body = z.object({ campaignId: z.string().uuid() }).parse(await request.json());
-    const result = generateTestLead(body.campaignId);
+    const result = await generateTestLead(body.campaignId);
     return NextResponse.json({
       ok: true,
       leadId: result.lead.id,
       score: result.lead.score,
       temperature: result.lead.temperature_key,
+      grade: result.lead.intelligence?.quality_grade ?? null,
       assignedOrganizationId: result.lead.assigned_organization_id,
       distributionStatus: result.lead.distribution_status,
     });

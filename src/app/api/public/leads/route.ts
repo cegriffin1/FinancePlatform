@@ -18,6 +18,8 @@ const bodySchema = z.object({
     consent: z.literal(true),
   }),
   appointmentRequested: z.boolean().default(false),
+  honeypot: z.string().optional().nullable(),
+  submissionStartedAt: z.string().optional().nullable(),
   attribution: z
     .object({
       utm_source: z.string().nullable().optional(),
@@ -54,16 +56,18 @@ export async function POST(request: Request) {
 
     const json = await request.json();
     const parsed = bodySchema.parse(json);
-    const result = processPublicLeadSubmission(parsed);
+    const result = await processPublicLeadSubmission(parsed);
     return NextResponse.json({
       ok: true,
       duplicate: result.duplicate,
       leadId: result.lead.id,
       score: result.lead.score,
       temperature: result.lead.temperature_key,
+      grade: result.lead.intelligence?.quality_grade ?? null,
       strategies: result.lead.classifications.map((c) => c.strategy_category),
       assignedOrganizationId: result.lead.assigned_organization_id,
       distributionStatus: result.lead.distribution_status,
+      recommendedAction: result.lead.intelligence?.recommended_action ?? null,
       poolSize: getSimStore().leads.length,
     });
   } catch (error) {

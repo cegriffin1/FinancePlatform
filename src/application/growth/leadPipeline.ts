@@ -12,6 +12,8 @@ import {
 } from "@/application/growth/simulationStore";
 import type { LeadEvent } from "@/domain/types";
 import type { LeadAttribution } from "@/domain/types/campaign-engine";
+import { applyLeadIntelligence } from "@/application/intelligence/orchestrate";
+import { LeadIdentityResolutionService } from "@/application/intelligence/identityResolution";
 
 export type PublicLeadSubmission = {
   organizationSlug: string;
@@ -42,6 +44,8 @@ export type PublicLeadSubmission = {
     external_creative_id?: string | null;
   };
   submissionKey?: string;
+  honeypot?: string | null;
+  submissionStartedAt?: string | null;
 };
 
 function appendEvent(
@@ -209,7 +213,7 @@ function distributePlatformLead(lead: SimLead, campaign: SimCampaign) {
   return lead;
 }
 
-export function processPublicLeadSubmission(input: PublicLeadSubmission) {
+export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   const store = getSimStore();
   const campaign = store.campaigns.find(
     (c) =>
@@ -225,14 +229,33 @@ export function processPublicLeadSubmission(input: PublicLeadSubmission) {
   if (!input.contact.consent) throw new Error("Consent is required");
   if (!input.contact.email.includes("@")) throw new Error("Valid email required");
 
-  // simple duplicate guard by email+campaign
-  const duplicate = store.leads.find(
-    (l) =>
-      l.campaign_id === campaign.id &&
-      l.email.toLowerCase() === input.contact.email.toLowerCase(),
+  const identity = new LeadIdentityResolutionService().resolve(
+    {
+      id: "incoming",
+      email: input.contact.email,
+      phone: input.contact.phone,
+      firstName: input.contact.firstName,
+      lastName: input.contact.lastName,
+      businessName: input.contact.businessName,
+      campaignId: campaign.id,
+    },
+    store.leads.map((l) => ({
+      id: l.id,
+      email: l.email,
+      phone: l.phone,
+      firstName: l.first_name,
+      lastName: l.last_name,
+      businessName: l.business_name,
+      campaignId: l.campaign_id,
+    })),
   );
-  if (duplicate) {
-    return { lead: duplicate, duplicate: true as const };
+
+  if (identity.result === "DUPLICATE_SUBMISSION" && identity.matched_lead_id) {
+    const existing = store.leads.find((l) => l.id === identity.matched_lead_id)!;
+    appendEvent(existing.id, campaign.id, existing.organization_id, "campaign_touch", {
+      mode: "duplicate_submission",
+    });
+    return { lead: existing, duplicate: true as const };
   }
 
   const now = new Date().toISOString();
@@ -260,11 +283,6 @@ export function processPublicLeadSubmission(input: PublicLeadSubmission) {
     assessmentCompleted: true,
     contactSubmitted: true,
     appointmentRequested: input.appointmentRequested,
-  });
-
-  appendEvent(leadId, campaign.id, org?.id ?? null, "lead_scored", {
-    score: scored.total,
-    temperature: scored.temperature,
   });
 
   const classifications = classifyStrategies(input.answers).map((c) => ({
@@ -299,15 +317,13 @@ export function processPublicLeadSubmission(input: PublicLeadSubmission) {
     territory: input.contact.state,
     captured_at: now,
   };
-
-  // freeze attribution object
   Object.freeze(attribution);
 
   let lead: SimLead = {
     id: leadId,
     organization_id: org?.id ?? null,
-    assigned_organization_id: org?.id ?? null,
-    assigned_agent_label: org ? `${org.name} Advisor` : null,
+    assigned_organization_id: null,
+    assigned_agent_label: null,
     campaign_id: campaign.id,
     platform_campaign_id:
       campaign.owner_type === "ALTUS_PLATFORM_CAMPAIGN" ? campaign.id : null,
@@ -343,46 +359,98 @@ export function processPublicLeadSubmission(input: PublicLeadSubmission) {
     attribution,
     classifications,
     distribution: null,
-    distribution_status:
-      campaign.owner_type === "SUBSCRIBER_CAMPAIGN"
-        ? "subscriber_owned"
-        : "pending",
+    distribution_status: "pending",
     created_at: now,
     updated_at: now,
+    processing_flags: { scoring_pending: true },
   };
 
+  // Persist before downstream processing
+  store.leads.unshift(lead);
   campaign.analytics.assessment_completions += 1;
   campaign.analytics.leads += 1;
-  if (scored.total >= 60) campaign.analytics.qualified_leads += 1;
-  if (scored.temperature === "HOT") campaign.analytics.hot_leads += 1;
-  if (scored.temperature === "PRIORITY") campaign.analytics.priority_leads += 1;
-  if (input.appointmentRequested) campaign.analytics.appointments += 1;
 
-  if (campaign.owner_type === "SUBSCRIBER_CAMPAIGN" && org) {
-    lead.status = "qualified";
-    lead.distribution_status = "subscriber_owned";
-    appendEvent(leadId, campaign.id, org.id, "lead_assigned", {
-      organization_id: org.id,
-      mode: "subscriber_owned",
+  try {
+    lead = await applyLeadIntelligence({
+      lead,
+      campaign,
+      appointmentRequested: input.appointmentRequested,
+      extras: {
+        honeypot: input.honeypot,
+        submissionStartedAt: input.submissionStartedAt,
+      },
     });
-    store.notifications.unshift({
-      id: randomUUID(),
-      organization_id: org.id,
-      lead_id: lead.id,
-      title: "New Campaign Lead",
-      body: `${lead.business_name} · ${lead.classifications[0]?.strategy_category ?? "Strategy"} · Score ${lead.score}`,
-      created_at: now,
-      read: false,
+    lead.processing_flags = { scoring_pending: false };
+    appendEvent(leadId, campaign.id, org?.id ?? null, "lead_scored", {
+      score: lead.score,
+      temperature: lead.temperature_key,
+      grade: lead.intelligence?.quality_grade,
     });
-  } else {
-    lead = distributePlatformLead(lead, campaign);
+  } catch {
+    lead.status = "scoring_pending";
+    lead.processing_flags = { scoring_pending: true };
   }
 
-  store.leads.unshift(lead);
+  const gate = lead.intelligence?.quality_gate;
+  const canDistribute =
+    !gate ||
+    (gate === "ACCEPT" &&
+      lead.distribution_status !== "held" &&
+      lead.distribution_status !== "nurture" &&
+      lead.status !== "rejected" &&
+      lead.status !== "review" &&
+      lead.status !== "nurture");
+
+  if (canDistribute) {
+    if (campaign.owner_type === "SUBSCRIBER_CAMPAIGN" && org) {
+      lead.organization_id = org.id;
+      lead.assigned_organization_id = org.id;
+      lead.assigned_agent_label = `${org.name} Advisor`;
+      lead.status = "qualified";
+      lead.distribution_status = "subscriber_owned";
+      appendEvent(leadId, campaign.id, org.id, "lead_assigned", {
+        organization_id: org.id,
+        mode: "subscriber_owned",
+      });
+      store.notifications.unshift({
+        id: randomUUID(),
+        organization_id: org.id,
+        lead_id: lead.id,
+        title:
+          lead.intelligence?.quality_grade === "A+" ||
+          lead.intelligence?.quality_grade === "A"
+            ? `NEW ${lead.intelligence.quality_grade} LEAD`
+            : "New Campaign Lead",
+        body: `${lead.business_name} · ${lead.classifications[0]?.strategy_category ?? "Strategy"} · Priority ${lead.score}`,
+        created_at: now,
+        read: false,
+      });
+    } else {
+      try {
+        lead = distributePlatformLead(lead, campaign);
+      } catch {
+        lead.status = "distribution_pending";
+        lead.processing_flags = {
+          ...lead.processing_flags,
+          distribution_pending: true,
+        };
+      }
+    }
+  }
+
+  if (lead.score >= 60) campaign.analytics.qualified_leads += 1;
+  if (lead.temperature_key === "HOT") campaign.analytics.hot_leads += 1;
+  if (lead.temperature_key === "PRIORITY") campaign.analytics.priority_leads += 1;
+  if (input.appointmentRequested) campaign.analytics.appointments += 1;
+
+  // refresh stored lead reference
+  const idx = store.leads.findIndex((l) => l.id === lead.id);
+  if (idx >= 0) store.leads[idx] = lead;
+
   return { lead, duplicate: false as const };
 }
 
-export function generateTestLead(campaignId: string) {
+export async function generateTestLead(campaignId: string) {
   const store = getSimStore();
   const campaign = store.campaigns.find((c) => c.id === campaignId);
   if (!campaign) throw new Error("Campaign not found");
@@ -400,13 +468,13 @@ export function generateTestLead(campaignId: string) {
     campaignSlug: campaign.slug,
     answers: sampleAnswers,
     contact: {
-      firstName: "Alex",
-      lastName: "Rivera",
-      businessName: "Acme Manufacturing",
-      email: `alex.rivera+${Date.now()}@example.com`,
+      firstName: "Marcus",
+      lastName: "Reed",
+      businessName: "Reed Logistics LLC",
+      email: `marcus.reed+${Date.now()}@example.com`,
       phone: "(305) 555-0142",
       state: campaign.territories[0] ?? "FL",
-      preferredContact: "Email",
+      preferredContact: "Phone",
       consent: true,
     },
     appointmentRequested: true,
@@ -414,8 +482,9 @@ export function generateTestLead(campaignId: string) {
       utm_source: "simulation",
       utm_medium: "test",
       utm_campaign: campaign.slug,
-      source_channel: campaign.channels[0] ?? "meta",
+      source_channel: campaign.channels[0] ?? "linkedin",
       landing_page: `/c/${campaign.organization_slug}/${campaign.slug}`,
     },
+    submissionStartedAt: new Date(Date.now() - 90_000).toISOString(),
   });
 }
