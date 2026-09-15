@@ -33,7 +33,10 @@ describe("permission helpers", () => {
   it("owner role includes core org permissions", () => {
     expect(DEFAULT_ROLE_PERMISSIONS.owner).toContain("organization.update");
     expect(DEFAULT_ROLE_PERMISSIONS.owner).toContain("users.invite");
+    expect(DEFAULT_ROLE_PERMISSIONS.owner).toContain("setter.leads.verify");
     expect(DEFAULT_ROLE_PERMISSIONS.contractor).not.toContain("users.invite");
+    expect(DEFAULT_ROLE_PERMISSIONS.setter).toContain("setter.leads.view");
+    expect(DEFAULT_ROLE_PERMISSIONS.setter).not.toContain("organization.update");
   });
 });
 

@@ -306,6 +306,22 @@ export async function applyLeadIntelligence(input: {
     id: randomUUID(),
     organization_id: lead.organization_id ?? store.organizations[0]!.id,
     lead_id: lead.id,
+    event_type: "lead_scored",
+    occurred_at: new Date().toISOString(),
+    actor_profile_id: null,
+    payload: {
+      opportunity_score: lead.score,
+      temperature: lead.temperature_key,
+      score_version: lead.score_version,
+      qualification: lead.qualification ?? null,
+    },
+    created_at: new Date().toISOString(),
+  });
+
+  store.events.push({
+    id: randomUUID(),
+    organization_id: lead.organization_id ?? store.organizations[0]!.id,
+    lead_id: lead.id,
     event_type: "lead_intelligence_ready",
     occurred_at: new Date().toISOString(),
     actor_profile_id: null,

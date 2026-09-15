@@ -19,7 +19,7 @@ export type AssetCommercialTier = (typeof ASSET_COMMERCIAL_TIERS)[number];
 
 export const ASSET_VERIFICATION_STATUSES = [
   "SELF_REPORTED",
-  "SETTER_VERIFIED",
+  "SETTER_CONFIRMED",
 ] as const;
 export type AssetVerificationStatus = (typeof ASSET_VERIFICATION_STATUSES)[number];
 

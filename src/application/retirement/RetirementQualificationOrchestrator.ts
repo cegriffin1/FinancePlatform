@@ -88,7 +88,7 @@ export class RetirementQualificationOrchestrator {
     const completeness = this.completeness.calculate(input.answers);
     const asset = this.assets.qualify(
       input.answers,
-      input.setterVerified ? "SETTER_VERIFIED" : "SELF_REPORTED",
+      input.setterVerified ? "SETTER_CONFIRMED" : "SELF_REPORTED",
     );
     const opportunity = this.opportunity.score({
       answers: input.answers,

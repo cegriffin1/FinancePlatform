@@ -170,8 +170,8 @@ export default function LeadDetailPage({
             </div>
             <div>
               <span className="font-semibold">Asset Status:</span>{" "}
-              {lead.qualification.asset.verification_status === "SETTER_VERIFIED"
-                ? "Setter Verified"
+              {lead.qualification.asset.verification_status === "SETTER_CONFIRMED"
+                ? "Setter Confirmed"
                 : "Self Reported"}
             </div>
             <div>

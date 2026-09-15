@@ -18,6 +18,13 @@ import type {
   ReservationStatus,
 } from "@/domain/types/lead-intelligence";
 import type { LeadQualificationProfile } from "@/domain/types/retirement-qualification";
+import type {
+  AgentIntroductionProfile,
+  EligibleAgent,
+  LeadAppointment,
+  SetterVerificationRecord,
+  NotificationChannelKind,
+} from "@/domain/types/setter-handoff";
 
 export type QualificationSnapshotRecord = {
   id: UUID;
@@ -68,6 +75,7 @@ export type SimLead = {
   organization_id: UUID | null;
   assigned_organization_id: UUID | null;
   assigned_agent_label: string | null;
+  assigned_agent_id?: string | null;
   campaign_id: UUID;
   platform_campaign_id: UUID | null;
   owner_type: CampaignOwnerType;
@@ -133,6 +141,8 @@ export type SimLead = {
     distribution_pending?: boolean;
     notification_pending?: boolean;
   };
+  setter_verification?: SetterVerificationRecord;
+  appointments?: LeadAppointment[];
 };
 
 export type SimNotification = {
@@ -143,6 +153,10 @@ export type SimNotification = {
   body: string;
   created_at: string;
   read: boolean;
+  channel?: NotificationChannelKind;
+  kind?: string;
+  recipient_agent_id?: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 export type SimStore = {
@@ -151,6 +165,9 @@ export type SimStore = {
   leads: SimLead[];
   events: LeadEvent[];
   notifications: SimNotification[];
+  agents: EligibleAgent[];
+  agent_introductions: AgentIntroductionProfile[];
+  appointments: LeadAppointment[];
   roundRobinCursor: Record<string, number>;
 };
 
@@ -217,6 +234,83 @@ function seed(): SimStore {
     leads: [],
     events: [],
     notifications: [],
+    agents: [
+      {
+        id: "30000000-0000-4000-8000-000000000001",
+        organization_id: "20000000-0000-4000-8000-000000000002",
+        name: "Jordan Hale",
+        title: "Retirement Planning Advisor",
+        states: ["FL", "GA"],
+        strategies: ["Retirement", "Protection", "Tax Strategy"],
+        active: true,
+      },
+      {
+        id: "30000000-0000-4000-8000-000000000002",
+        organization_id: "20000000-0000-4000-8000-000000000002",
+        name: "Alex Rivera",
+        title: "Senior Wealth Advisor",
+        states: ["FL"],
+        strategies: ["Retirement", "Business Growth"],
+        active: true,
+      },
+      {
+        id: "30000000-0000-4000-8000-000000000003",
+        organization_id: "20000000-0000-4000-8000-000000000003",
+        name: "Casey Morgan",
+        title: "Financial Advisor",
+        states: ["FL", "TX", "CA"],
+        strategies: ["Retirement", "Business Growth"],
+        active: true,
+      },
+    ],
+    agent_introductions: [
+      {
+        id: "40000000-0000-4000-8000-000000000001",
+        organization_id: "20000000-0000-4000-8000-000000000002",
+        agent_id: "30000000-0000-4000-8000-000000000001",
+        agent_name: "Jordan Hale",
+        title: "Retirement Planning Advisor",
+        experience_summary:
+          "Helps pre-retirees organize income, protection, and distribution decisions.",
+        specialties: ["Retirement income", "Principal protection", "401(k) rollovers"],
+        states_licenses: ["FL", "GA"],
+        organization_name: "Premier Advisors FL",
+        approved_introduction_script:
+          "I'd like to introduce you to Jordan Hale, a Retirement Planning Advisor with Premier Advisors FL. Jordan works with people approaching retirement on income planning and protecting what they've saved. Jordan is licensed in Florida and Georgia.",
+        active: true,
+      },
+      {
+        id: "40000000-0000-4000-8000-000000000002",
+        organization_id: "20000000-0000-4000-8000-000000000002",
+        agent_id: "30000000-0000-4000-8000-000000000002",
+        agent_name: "Alex Rivera",
+        title: "Senior Wealth Advisor",
+        experience_summary:
+          "Focuses on coordinated retirement and business-owner planning conversations.",
+        specialties: ["Retirement", "Business growth planning"],
+        states_licenses: ["FL"],
+        organization_name: "Premier Advisors FL",
+        approved_introduction_script:
+          "I'd like to introduce you to Alex Rivera, a Senior Wealth Advisor with Premier Advisors FL. Alex helps clients organize retirement and business planning discussions and is licensed in Florida.",
+        active: true,
+      },
+      {
+        id: "40000000-0000-4000-8000-000000000003",
+        organization_id: "20000000-0000-4000-8000-000000000003",
+        agent_id: "30000000-0000-4000-8000-000000000003",
+        agent_name: "Casey Morgan",
+        title: "Financial Advisor",
+        experience_summary:
+          "Supports retirement opportunity conversations for Demo Organization clients.",
+        specialties: ["Retirement", "Business Growth"],
+        states_licenses: ["FL", "TX", "CA"],
+        organization_name: "Demo Organization",
+        approved_introduction_script:
+          "I'd like to introduce you to Casey Morgan, a Financial Advisor with Demo Organization. Casey helps clients review retirement priorities and next steps and is licensed in Florida, Texas, and California.",
+        active: true,
+      },
+    ],
+    appointments: [],
     roundRobinCursor: {},
   };
 }

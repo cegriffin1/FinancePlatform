@@ -23,6 +23,9 @@ export const PERMISSIONS = [
   "leads.view_all",
   "leads.assign",
   "leads.update",
+  "setter.leads.view",
+  "setter.leads.verify",
+  "setter.appointments.manage",
   "pipeline.view",
   "pipeline.manage",
   "reports.view_own",
@@ -40,6 +43,7 @@ export const SYSTEM_ROLES = [
   "sales",
   "employee",
   "contractor",
+  "setter",
 ] as const;
 
 export type SystemRoleKey = (typeof SYSTEM_ROLES)[number];
@@ -57,6 +61,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleKey, PermissionKey[]> = 
     "leads.view_team",
     "leads.assign",
     "leads.update",
+    "setter.leads.view",
+    "setter.leads.verify",
+    "setter.appointments.manage",
     "pipeline.view",
     "reports.view_team",
   ],
@@ -81,6 +88,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleKey, PermissionKey[]> = 
     "leads.update",
     "pipeline.view",
     "reports.view_own",
+  ],
+  /** Quality-control setter — no platform-admin permissions. */
+  setter: [
+    "organization.view",
+    "setter.leads.view",
+    "setter.leads.verify",
+    "setter.appointments.manage",
+    "leads.view_team",
   ],
   employee: [
     "organization.view",

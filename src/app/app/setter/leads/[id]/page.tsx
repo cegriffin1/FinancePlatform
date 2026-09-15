@@ -1,0 +1,12 @@
+import { redirect } from "next/navigation";
+
+type Params = Promise<{ id: string }>;
+
+export default async function AppSetterLeadRedirect({
+  params,
+}: {
+  params: Params;
+}) {
+  const { id } = await params;
+  redirect(`/setter/leads/${id}`);
+}

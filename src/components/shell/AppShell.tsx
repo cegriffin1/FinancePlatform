@@ -1,5 +1,6 @@
 import type { PropsWithChildren } from "react";
 import { AppSidebar } from "@/components/shell/AppSidebar";
+import { InAppNotifications } from "@/components/shell/InAppNotifications";
 
 export function AppShell({
   children,
@@ -19,6 +20,7 @@ export function AppShell({
               {userLabel ?? "Signed out · configure Supabase to authenticate"}
             </p>
           </div>
+          <InAppNotifications />
         </header>
         <main className="flex-1 px-8 py-8">{children}</main>
       </div>

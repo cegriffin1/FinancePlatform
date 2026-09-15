@@ -367,6 +367,9 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
 
   // Persist before downstream processing
   store.leads.unshift(lead);
+  appendEvent(leadId, campaign.id, org?.id ?? null, "lead_submitted", {
+    source: input.attribution.ad_provider ?? input.attribution.source_channel,
+  });
   campaign.analytics.assessment_completions += 1;
   campaign.analytics.leads += 1;
 

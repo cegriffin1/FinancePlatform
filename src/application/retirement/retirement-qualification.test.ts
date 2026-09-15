@@ -126,8 +126,8 @@ describe("AssetQualificationService", () => {
   });
 
   it("stores verification separately from self-reported band", () => {
-    const q = assets.qualify({ repositionable_assets: "$750K–$999K" }, "SETTER_VERIFIED");
-    expect(q.verification_status).toBe("SETTER_VERIFIED");
+    const q = assets.qualify({ repositionable_assets: "$750K–$999K" }, "SETTER_CONFIRMED");
+    expect(q.verification_status).toBe("SETTER_CONFIRMED");
     expect(q.commercial_tier).toBe("GOLD");
   });
 });
