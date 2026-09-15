@@ -8,6 +8,10 @@ import {
   StubCRMProvider,
 } from "@/infrastructure/providers/stubs";
 import {
+  AltusCRMProvider,
+  Dynamics365CRMProvider,
+} from "@/infrastructure/providers/AltusCRMProvider";
+import {
   StubAdvancedMarketsModule,
   StubBillingProvider,
   StubLeadLifecyclePolicyService,
@@ -25,6 +29,7 @@ import { ensureIntegrationJobHandlers } from "@/application/integrations/registe
 /** Composition root — swap implementations without UI changes. */
 export function createProviderContainer() {
   ensureIntegrationJobHandlers();
+  const useDynamics = process.env.ALTUS_CRM_PROVIDER === "dynamics365";
   return {
     leadScoring: new StubLeadScoringService(),
     leadRouting: new StubLeadRoutingService(),
@@ -36,7 +41,10 @@ export function createProviderContainer() {
     leadNurture: new StubLeadNurtureService(),
     communication: new StubCommunicationProvider(),
     calendar: new StubCalendarProvider(),
-    crm: new StubCRMProvider(),
+    /** Default: AltusCRMProvider — D365 not required for MVP. */
+    crm: useDynamics ? new Dynamics365CRMProvider() : new AltusCRMProvider(),
+    crmStub: new StubCRMProvider(),
+    dynamics365: new Dynamics365CRMProvider(),
     contactCenter: new StubContactCenterProvider(),
     analytics: new StubAnalyticsProvider(),
     billing: new StubBillingProvider(),

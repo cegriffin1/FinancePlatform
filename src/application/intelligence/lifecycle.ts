@@ -95,22 +95,25 @@ export function actionLabel(action: NextBestAction): string {
 export function nextStageAfterOutcome(outcome: string): PipelineStage {
   switch (outcome) {
     case "Appointment Scheduled":
-      return "Appointment";
+      return "APPOINTMENT_SET";
     case "Appointment Completed":
-      return "Qualified";
+      return "QUALIFIED";
     case "Qualified Opportunity":
-      return "Opportunity";
+      return "OPPORTUNITY";
     case "Proposal":
-      return "Proposal";
+      return "OPPORTUNITY";
     case "Won":
-      return "Won";
+      return "WON";
     case "Lost":
-      return "Lost";
+      return "LOST";
     case "Nurture":
-      return "Nurture";
+      return "NURTURE";
     case "Unable to Reach":
-      return "Attempted";
+      return "CONTACTED";
+    case "Not Interested":
+    case "Wrong Fit":
+      return "LOST";
     default:
-      return "Contacted";
+      return "CONTACTED";
   }
 }

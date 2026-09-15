@@ -35,7 +35,7 @@ export default function LeadQualityAnalyticsPage() {
       invalid: leads.filter((l) => l.intelligence?.quality_gate === "REJECT").length,
       duplicates: leads.filter((l) => l.intelligence?.quality_gate === "DUPLICATE").length,
       contacted: leads.filter((l) =>
-        ["Contacted", "Appointment", "Opportunity", "Won"].includes(
+        ["CONTACTED", "APPOINTMENT_SET", "QUALIFIED", "OPPORTUNITY", "WON"].includes(
           l.pipeline_stage ?? "",
         ),
       ).length,

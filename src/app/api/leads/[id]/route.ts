@@ -81,7 +81,7 @@ export async function POST(
     lead.pipeline_stage = (parsed.stage as PipelineStage) ?? lead.pipeline_stage;
     lead.stage_history = [
       ...(lead.stage_history ?? []),
-      { stage: lead.pipeline_stage ?? "Contacted", at: now },
+      { stage: lead.pipeline_stage ?? "CONTACTED", at: now },
     ];
     if (parsed.outcome === "Won") {
       lead.closed_value_cents = parsed.closed_value_cents ?? 0;

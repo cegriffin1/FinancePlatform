@@ -67,7 +67,7 @@ test("lead intelligence vertical journey", async ({ request }) => {
     data: {
       action: "outcome",
       outcome: "Won",
-      stage: "Won",
+      stage: "WON",
       closed_value_cents: 2500000,
     },
   });

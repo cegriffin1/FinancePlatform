@@ -57,16 +57,16 @@ export const NEXT_BEST_ACTIONS = [
 export type NextBestAction = (typeof NEXT_BEST_ACTIONS)[number];
 
 export const PIPELINE_STAGES = [
-  "New",
-  "Attempted",
-  "Contacted",
-  "Qualified",
-  "Appointment",
-  "Opportunity",
-  "Proposal",
-  "Won",
-  "Lost",
-  "Nurture",
+  "NEW",
+  "SETTER_REVIEW",
+  "VERIFIED",
+  "APPOINTMENT_SET",
+  "CONTACTED",
+  "QUALIFIED",
+  "OPPORTUNITY",
+  "WON",
+  "LOST",
+  "NURTURE",
 ] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 

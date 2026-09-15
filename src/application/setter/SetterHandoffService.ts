@@ -17,6 +17,8 @@ import {
 import type { SimLead, SimNotification } from "@/application/growth/simulationStore";
 import { getSimStore } from "@/application/growth/simulationStore";
 import { randomUUID } from "crypto";
+import { LeadOwnershipService } from "@/application/crm/RetirementCrmService";
+import { buildPreCallBrief } from "@/application/crm/preCallBrief";
 
 function nowIso() {
   return new Date().toISOString();
@@ -254,6 +256,12 @@ export class SetterVerificationService {
               : "Schedule advisor conversation",
         };
       }
+      lead.pipeline_stage =
+        disposition === "APPOINTMENT_SET" ? "APPOINTMENT_SET" : "VERIFIED";
+      lead.stage_history = [
+        ...(lead.stage_history ?? []),
+        { stage: lead.pipeline_stage, at: nowIso() },
+      ];
     }
 
     if (disposition === "NURTURE" || disposition === "ASSET_THRESHOLD_NOT_MET") {
@@ -387,10 +395,10 @@ export class AppointmentHandoffService {
     input.lead.assigned_agent_label = agent.name;
     input.lead.distribution_status = "assigned";
     input.lead.status = "working";
-    input.lead.pipeline_stage = "Appointment";
+    input.lead.pipeline_stage = "APPOINTMENT_SET";
     input.lead.stage_history = [
       ...(input.lead.stage_history ?? []),
-      { stage: "Appointment", at: nowIso() },
+      { stage: "APPOINTMENT_SET", at: nowIso() },
     ];
 
     if (input.lead.qualification) {
@@ -401,6 +409,14 @@ export class AppointmentHandoffService {
         agent_eligible: true,
       };
     }
+
+    // Establish configurable ownership window on agent handoff
+    new LeadOwnershipService().assign(input.lead, {
+      organizationId: orgId,
+      ownerId: agent.id,
+      ownerLabel: agent.name,
+      source: "setter_handoff",
+    });
 
     appendEvent(input.lead, "agent_assigned", {
       agent_id: agent.id,
@@ -453,27 +469,6 @@ export class AppointmentHandoffService {
     input.lead.updated_at = nowIso();
     return { lead: input.lead, agent };
   }
-}
-
-export function buildPreCallBrief(lead: SimLead): string {
-  const a = lead.assessment_answers;
-  const lines = [
-    [a.age_range, lead.state || a.state].filter(Boolean).join(" • "),
-    a.retirement_timing
-      ? `Retiring ${a.retirement_timing === "Within 2 years" ? "<2 years" : a.retirement_timing}`
-      : null,
-    a.repositionable_assets
-      ? `${a.repositionable_assets} potentially repositionable`
-      : null,
-    a.employer_assets === "Former employer"
-      ? "Former employer 401(k)"
-      : a.asset_location
-        ? a.asset_location
-        : null,
-    [a.primary_objective, a.advisor_improvement].filter(Boolean).join(" + ") || null,
-    a.decision_timeline ? `Decision: ${a.decision_timeline}` : null,
-  ].filter(Boolean);
-  return lines.join("\n");
 }
 
 export function selfReportedValue(

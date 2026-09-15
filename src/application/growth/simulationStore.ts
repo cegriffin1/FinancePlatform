@@ -25,6 +25,14 @@ import type {
   SetterVerificationRecord,
   NotificationChannelKind,
 } from "@/domain/types/setter-handoff";
+import type {
+  CrmContactAttempt,
+  CrmFollowUp,
+  CrmNote,
+  LeadOwnership,
+  OwnershipConfig,
+} from "@/domain/types/retirement-crm";
+import { DEFAULT_OWNERSHIP_CONFIG } from "@/domain/types/retirement-crm";
 
 export type QualificationSnapshotRecord = {
   id: UUID;
@@ -67,6 +75,10 @@ export type SimCampaign = Omit<GrowthCampaign, "status"> & {
     hot_leads: number;
     priority_leads: number;
     appointments: number;
+    outcome_counts?: Record<string, number>;
+    won?: number;
+    lost?: number;
+    qualified_opportunities?: number;
   };
 };
 
@@ -143,6 +155,20 @@ export type SimLead = {
   };
   setter_verification?: SetterVerificationRecord;
   appointments?: LeadAppointment[];
+  ownership?: LeadOwnership | null;
+  crm_notes?: CrmNote[];
+  follow_ups?: CrmFollowUp[];
+  contact_attempts?: CrmContactAttempt[];
+};
+
+export type CrmSyncLogEntry = {
+  id: UUID;
+  provider: string;
+  organization_id: UUID;
+  entity: string;
+  external_id: string;
+  payload: Record<string, unknown>;
+  created_at: string;
 };
 
 export type SimNotification = {
@@ -168,6 +194,9 @@ export type SimStore = {
   agents: EligibleAgent[];
   agent_introductions: AgentIntroductionProfile[];
   appointments: LeadAppointment[];
+  follow_ups: CrmFollowUp[];
+  ownership_config: OwnershipConfig;
+  crm_sync_log: CrmSyncLogEntry[];
   roundRobinCursor: Record<string, number>;
 };
 
@@ -311,6 +340,9 @@ function seed(): SimStore {
       },
     ],
     appointments: [],
+    follow_ups: [],
+    ownership_config: { ...DEFAULT_OWNERSHIP_CONFIG },
+    crm_sync_log: [],
     roundRobinCursor: {},
   };
 }

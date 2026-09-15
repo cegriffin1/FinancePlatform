@@ -14,6 +14,7 @@ import type { LeadEvent } from "@/domain/types";
 import type { LeadAttribution } from "@/domain/types/campaign-engine";
 import { applyLeadIntelligence } from "@/application/intelligence/orchestrate";
 import { LeadIdentityResolutionService } from "@/application/intelligence/identityResolution";
+import { LeadOwnershipService } from "@/application/crm/RetirementCrmService";
 
 export type PublicLeadSubmission = {
   organizationSlug: string;
@@ -175,6 +176,11 @@ function distributePlatformLead(lead: SimLead, campaign: SimCampaign) {
   lead.assigned_agent_label = `${selected.name} Advisor`;
   lead.distribution_status = "assigned";
   lead.status = "qualified";
+  new LeadOwnershipService().assign(lead, {
+    organizationId: selected.id,
+    ownerLabel: `${selected.name} Advisor`,
+    source: "platform_distribution",
+  });
   lead.classifications = lead.classifications.map((c) => ({
     ...c,
     organization_id: selected.id,
@@ -411,6 +417,11 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
       lead.assigned_agent_label = `${org.name} Advisor`;
       lead.status = "qualified";
       lead.distribution_status = "subscriber_owned";
+      new LeadOwnershipService().assign(lead, {
+        organizationId: org.id,
+        ownerLabel: `${org.name} Advisor`,
+        source: "subscriber_campaign",
+      });
       appendEvent(leadId, campaign.id, org.id, "lead_assigned", {
         organization_id: org.id,
         mode: "subscriber_owned",

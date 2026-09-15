@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSimStore } from "@/application/growth/simulationStore";
+import { buildPreCallBrief } from "@/application/crm/preCallBrief";
 import {
   AppointmentHandoffService,
   SetterVerificationService,
-  buildPreCallBrief,
   selfReportedValue,
 } from "@/application/setter/SetterHandoffService";
 import {

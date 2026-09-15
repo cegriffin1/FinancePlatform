@@ -206,8 +206,21 @@ export async function applyLeadIntelligence(input: {
     lead.engagement_score = lead.qualification!.opportunity.engagement_quality;
   }
 
-  lead.pipeline_stage = "New";
-  lead.stage_history = [{ stage: "New", at: lead.created_at }];
+  const retirementNurture =
+    lead.qualification?.commercial_status === "NURTURE" ||
+    lead.qualification?.temperature.temperature === "COLD";
+
+  if (
+    lead.qualification?.commercial_status === "SETTER_REVIEW" ||
+    lead.qualification?.commercial_status === "HIGH_VALUE"
+  ) {
+    lead.pipeline_stage = "SETTER_REVIEW";
+  } else if (retirementNurture) {
+    lead.pipeline_stage = "NURTURE";
+  } else {
+    lead.pipeline_stage = "NEW";
+  }
+  lead.stage_history = [{ stage: lead.pipeline_stage, at: lead.created_at }];
   lead.reservation_status = "AVAILABLE";
 
   if (identityResult.result === "DUPLICATE_SUBMISSION" && identityResult.matched_lead_id) {
@@ -222,10 +235,6 @@ export async function applyLeadIntelligence(input: {
     lead.distribution_status = "held";
     return lead;
   }
-
-  const retirementNurture =
-    lead.qualification?.commercial_status === "NURTURE" ||
-    lead.qualification?.temperature.temperature === "COLD";
 
   if (
     profile.quality_gate === "REVIEW" ||
@@ -246,7 +255,7 @@ export async function applyLeadIntelligence(input: {
     ) {
       lead.status = "nurture";
       lead.distribution_status = "nurture";
-      lead.pipeline_stage = "Nurture";
+      lead.pipeline_stage = "NURTURE";
     } else {
       lead.status = "review";
       lead.distribution_status = "held";
