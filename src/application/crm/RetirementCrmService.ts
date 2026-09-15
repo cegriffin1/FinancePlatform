@@ -87,6 +87,16 @@ export class LeadOwnershipService {
     if (input.ownerId) lead.assigned_agent_id = input.ownerId;
     lead.updated_at = nowIso();
     appendEvent(lead, "ownership_assigned", { ...ownership });
+    if (
+      !lead.inventory_status ||
+      lead.inventory_status === "NEW" ||
+      lead.inventory_status === "QUALIFIED" ||
+      lead.inventory_status === "MARKETPLACE" ||
+      lead.inventory_status === "REPURCHASED" ||
+      lead.inventory_status === "PURCHASED_ASSIGNED"
+    ) {
+      lead.inventory_status = "ACTIVE_OWNERSHIP";
+    }
     return ownership;
   }
 }

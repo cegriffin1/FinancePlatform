@@ -15,6 +15,7 @@ import type { LeadAttribution } from "@/domain/types/campaign-engine";
 import { applyLeadIntelligence } from "@/application/intelligence/orchestrate";
 import { LeadIdentityResolutionService } from "@/application/intelligence/identityResolution";
 import { LeadOwnershipService } from "@/application/crm/RetirementCrmService";
+import { LeadInventoryService } from "@/application/inventory/LeadInventoryService";
 
 export type PublicLeadSubmission = {
   organizationSlug: string;
@@ -373,6 +374,7 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
 
   // Persist before downstream processing
   store.leads.unshift(lead);
+  new LeadInventoryService().initializeOnCreate(lead);
   appendEvent(leadId, campaign.id, org?.id ?? null, "lead_submitted", {
     source: input.attribution.ad_provider ?? input.attribution.source_channel,
   });
@@ -390,6 +392,14 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
       },
     });
     lead.processing_flags = { scoring_pending: false };
+    // Refresh inventory after qualification scoring
+    new LeadInventoryService().initializeOnCreate(lead);
+    if (lead.aging) {
+      lead.aging.original_score = lead.score;
+      lead.aging.current_score = lead.score;
+      lead.aging.original_temperature = lead.temperature_key;
+      lead.aging.current_temperature = lead.temperature_key;
+    }
     appendEvent(leadId, campaign.id, org?.id ?? null, "lead_scored", {
       score: lead.score,
       temperature: lead.temperature_key,

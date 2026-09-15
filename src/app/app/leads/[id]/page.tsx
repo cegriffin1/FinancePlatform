@@ -187,7 +187,60 @@ export default function LeadDetailPage({
             label="Period"
             value={lead.ownership ? `${lead.ownership.period_days} days` : "—"}
           />
+          <Row
+            label="Days remaining"
+            value={
+              lead.ownership?.ownership_expires_at
+                ? `${Math.ceil(
+                    (new Date(lead.ownership.ownership_expires_at).getTime() -
+                      Date.now()) /
+                      (24 * 60 * 60 * 1000),
+                  )} Days Remaining`
+                : "—"
+            }
+          />
           <Row label="Source" value={lead.ownership?.source ?? lead.attribution.source ?? "—"} />
+          {lead.aging ? (
+            <>
+              <Row
+                label="Original score"
+                value={String(lead.aging.original_score)}
+              />
+              <Row
+                label="Current score"
+                value={String(lead.aging.current_score)}
+              />
+              <Row
+                label="Original temp"
+                value={lead.aging.original_temperature}
+              />
+              <Row
+                label="Current temp"
+                value={lead.aging.current_temperature}
+              />
+            </>
+          ) : null}
+          <div className="pt-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-md border border-[var(--altus-border)] px-2 py-1 text-xs font-semibold"
+              onClick={() =>
+                void fetch("/api/marketplace", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "extend",
+                    lead_id: lead.id,
+                    days: 7,
+                    reason: "Agent-requested eligible extension",
+                  }),
+                }).then(() => load())
+              }
+            >
+              Request 7-day extension
+            </button>
+          </div>
         </Card>
         <Card title="Campaign">
           <Row label="Campaign" value={campaignName || "—"} />

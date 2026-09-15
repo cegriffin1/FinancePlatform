@@ -12,6 +12,12 @@ export const APP_NAV = [
   { href: "/app/calendar", label: "Calendar", permission: null },
   { href: "/app/team", label: "Team", permission: "teams.view" },
   { href: "/app/reports", label: "Reports", permission: "reports.view_own" },
+  { href: "/marketplace", label: "Marketplace", permission: "leads.view_team" },
+  {
+    href: "/admin/lead-inventory",
+    label: "Lead Inventory",
+    permission: null,
+  },
   {
     href: "/app/admin/lead-distribution",
     label: "Distribution",

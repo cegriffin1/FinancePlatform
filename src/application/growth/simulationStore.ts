@@ -33,6 +33,20 @@ import type {
   OwnershipConfig,
 } from "@/domain/types/retirement-crm";
 import { DEFAULT_OWNERSHIP_CONFIG } from "@/domain/types/retirement-crm";
+import type {
+  InventoryConfig,
+  InventoryExtension,
+  InventoryLifecycleStatus,
+  LeadComplianceProfile,
+  LeadPricingConfig,
+  LeadPurchaseRecord,
+  LeadReservation,
+  ScoreAgingSnapshot,
+} from "@/domain/types/lead-inventory";
+import {
+  DEFAULT_INVENTORY_CONFIG,
+  DEFAULT_PRICING_CONFIG,
+} from "@/domain/types/lead-inventory";
 
 export type QualificationSnapshotRecord = {
   id: UUID;
@@ -159,6 +173,15 @@ export type SimLead = {
   crm_notes?: CrmNote[];
   follow_ups?: CrmFollowUp[];
   contact_attempts?: CrmContactAttempt[];
+  compliance?: LeadComplianceProfile;
+  aging?: ScoreAgingSnapshot;
+  inventory_status?: InventoryLifecycleStatus;
+  marketplace_listed?: boolean;
+  marketplace_price_cents?: number | null;
+  lead_version?: number;
+  active_reservation_id?: string | null;
+  ownership_extensions?: InventoryExtension[];
+  purchase_history?: LeadPurchaseRecord[];
 };
 
 export type CrmSyncLogEntry = {
@@ -196,6 +219,11 @@ export type SimStore = {
   appointments: LeadAppointment[];
   follow_ups: CrmFollowUp[];
   ownership_config: OwnershipConfig;
+  inventory_config: InventoryConfig;
+  pricing_config: LeadPricingConfig;
+  reservations: LeadReservation[];
+  purchases: LeadPurchaseRecord[];
+  ownership_extensions: InventoryExtension[];
   crm_sync_log: CrmSyncLogEntry[];
   roundRobinCursor: Record<string, number>;
 };
@@ -342,6 +370,16 @@ function seed(): SimStore {
     appointments: [],
     follow_ups: [],
     ownership_config: { ...DEFAULT_OWNERSHIP_CONFIG },
+    inventory_config: { ...DEFAULT_INVENTORY_CONFIG },
+    pricing_config: {
+      ...DEFAULT_PRICING_CONFIG,
+      bands: DEFAULT_PRICING_CONFIG.bands.map((b) => ({ ...b })),
+      temperature_multipliers: { ...DEFAULT_PRICING_CONFIG.temperature_multipliers },
+      territory_multipliers: { ...DEFAULT_PRICING_CONFIG.territory_multipliers },
+    },
+    reservations: [],
+    purchases: [],
+    ownership_extensions: [],
     crm_sync_log: [],
     roundRobinCursor: {},
   };
