@@ -12,6 +12,8 @@ import type { SimLead } from "@/application/growth/simulationStore";
 import type { SimCampaign } from "@/application/growth/simulationStore";
 import { getSimStore } from "@/application/growth/simulationStore";
 import type { LeadScoreSnapshotRecord } from "@/domain/types/lead-intelligence";
+import { RetirementQualificationOrchestrator } from "@/application/retirement/RetirementQualificationOrchestrator";
+import type { QualificationSnapshotRecord } from "@/application/growth/simulationStore";
 
 export type IntelligenceExtras = {
   honeypot?: string | null;
@@ -113,33 +115,97 @@ export async function applyLeadIntelligence(input: {
 
   lead.intelligence = profile;
   lead.score_snapshots = [...(lead.score_snapshots ?? []), snapshot];
-  lead.score = profile.overall_priority_score;
-  lead.fit_score = profile.fit_score;
-  lead.intent_score = profile.intent_score;
-  lead.engagement_score = profile.engagement_score;
-  lead.temperature_key = profile.lead_temperature;
-  lead.score_version = profile.score_version;
-  lead.scored_at = profile.scored_at;
-  lead.score_breakdown = {
-    total: profile.overall_priority_score,
-    fit: profile.fit_score,
-    intent: profile.intent_score,
-    engagement: profile.engagement_score,
-    classification: profile.lead_temperature,
-    scoring_version: profile.score_version,
-    factors: profile.factors.map((f) => ({
-      key: f.key,
-      category:
-        f.dimension === "intent"
-          ? "intent"
-          : f.dimension === "engagement"
-            ? "engagement"
-            : "fit",
-      points: f.points,
-      reason: f.reason,
-    })),
-    explanation: profile.explanation,
-  };
+
+  // MVP retirement qualification / temperature (extends, does not replace intelligence)
+  const hasRetirementSignals =
+    Boolean(lead.assessment_answers.repositionable_assets) ||
+    Boolean(lead.assessment_answers.decision_timeline) ||
+    Boolean(lead.assessment_answers.primary_objective);
+
+  if (hasRetirementSignals) {
+    const qualification = new RetirementQualificationOrchestrator().evaluate({
+      answers: lead.assessment_answers,
+      consent: lead.consent,
+      appointmentRequested: input.appointmentRequested,
+      assessmentCompleted: true,
+      contactSubmitted: true,
+      fraudLow: quality.fraud_risk === "LOW",
+      duplicate: identityResult.result === "DUPLICATE_SUBMISSION",
+      assigned: Boolean(lead.assigned_organization_id),
+    });
+    const qSnapshot: QualificationSnapshotRecord = {
+      id: randomUUID(),
+      lead_id: lead.id,
+      organization_id: lead.organization_id,
+      profile: { ...qualification },
+      created_at: new Date().toISOString(),
+    };
+    lead.qualification = qualification;
+    lead.qualification_snapshots = [
+      ...(lead.qualification_snapshots ?? []),
+      qSnapshot,
+    ];
+    // Opportunity score is the commercial value score; temperature is readiness
+    lead.score = qualification.opportunity.opportunity_score;
+    lead.temperature_key = qualification.temperature.temperature;
+    lead.score_version = qualification.score_version;
+    lead.scored_at = qualification.scored_at;
+    lead.score_breakdown = {
+      total: qualification.opportunity.opportunity_score,
+      fit: qualification.opportunity.opportunity_size,
+      intent: qualification.opportunity.intent_timing,
+      engagement: qualification.opportunity.engagement_quality,
+      classification: qualification.opportunity.classification,
+      scoring_version: qualification.score_version,
+      factors: qualification.opportunity.factors.map((f) => ({
+        key: f.key,
+        category:
+          f.dimension === "intent_timing"
+            ? "intent"
+            : f.dimension === "engagement_quality"
+              ? "engagement"
+              : "fit",
+        points: f.points,
+        reason: f.reason,
+      })),
+      explanation: qualification.opportunity.explanation,
+    };
+  } else {
+    lead.score = profile.overall_priority_score;
+    lead.fit_score = profile.fit_score;
+    lead.intent_score = profile.intent_score;
+    lead.engagement_score = profile.engagement_score;
+    lead.temperature_key = profile.lead_temperature;
+    lead.score_version = profile.score_version;
+    lead.scored_at = profile.scored_at;
+    lead.score_breakdown = {
+      total: profile.overall_priority_score,
+      fit: profile.fit_score,
+      intent: profile.intent_score,
+      engagement: profile.engagement_score,
+      classification: profile.lead_temperature,
+      scoring_version: profile.score_version,
+      factors: profile.factors.map((f) => ({
+        key: f.key,
+        category:
+          f.dimension === "intent"
+            ? "intent"
+            : f.dimension === "engagement"
+              ? "engagement"
+              : "fit",
+        points: f.points,
+        reason: f.reason,
+      })),
+      explanation: profile.explanation,
+    };
+  }
+
+  if (hasRetirementSignals) {
+    lead.fit_score = lead.qualification!.opportunity.opportunity_size;
+    lead.intent_score = lead.qualification!.opportunity.intent_timing;
+    lead.engagement_score = lead.qualification!.opportunity.engagement_quality;
+  }
+
   lead.pipeline_stage = "New";
   lead.stage_history = [{ stage: "New", at: lead.created_at }];
   lead.reservation_status = "AVAILABLE";
@@ -157,16 +223,27 @@ export async function applyLeadIntelligence(input: {
     return lead;
   }
 
+  const retirementNurture =
+    lead.qualification?.commercial_status === "NURTURE" ||
+    lead.qualification?.temperature.temperature === "COLD";
+
   if (
     profile.quality_gate === "REVIEW" ||
+    retirementNurture ||
     nurture.shouldNurture({
-      temperature: profile.lead_temperature,
+      temperature: lead.temperature_key,
       recommendedAction: profile.recommended_action,
       qualityGate: profile.quality_gate,
-      timeline: lead.assessment_answers.timeline,
+      timeline:
+        lead.assessment_answers.decision_timeline ??
+        lead.assessment_answers.timeline,
     })
   ) {
-    if (profile.recommended_action === "NURTURE" || profile.lead_temperature === "COLD") {
+    if (
+      profile.recommended_action === "NURTURE" ||
+      lead.temperature_key === "COLD" ||
+      lead.qualification?.commercial_status === "NURTURE"
+    ) {
       lead.status = "nurture";
       lead.distribution_status = "nurture";
       lead.pipeline_stage = "Nurture";
@@ -200,20 +277,28 @@ export async function applyLeadIntelligence(input: {
     });
   }
 
-  // Enhance notification copy for premium grades
-  if (
-    lead.assigned_organization_id &&
-    (profile.quality_grade === "A+" || profile.quality_grade === "A")
-  ) {
-    store.notifications.unshift({
-      id: randomUUID(),
-      organization_id: lead.assigned_organization_id,
-      lead_id: lead.id,
-      title: `NEW ${profile.quality_grade} LEAD`,
-      body: `${lead.first_name} ${lead.last_name} · ${lead.business_name} · Priority ${profile.overall_priority_score} · ${actionLabel(profile.recommended_action)}`,
-      created_at: new Date().toISOString(),
-      read: false,
-    });
+  // Enhance notification copy for premium grades / ready-now retirement
+  if (lead.assigned_organization_id) {
+    const elite =
+      lead.qualification?.opportunity.classification === "ELITE_OPPORTUNITY" ||
+      lead.qualification?.temperature.temperature === "READY_NOW";
+    const premiumGrade =
+      profile.quality_grade === "A+" || profile.quality_grade === "A";
+    if (elite || premiumGrade) {
+      store.notifications.unshift({
+        id: randomUUID(),
+        organization_id: lead.assigned_organization_id,
+        lead_id: lead.id,
+        title: elite
+          ? `NEW ${lead.qualification?.temperature.temperature ?? "PRIORITY"} OPPORTUNITY`
+          : `NEW ${profile.quality_grade} LEAD`,
+        body: elite
+          ? `${lead.first_name} ${lead.last_name} · ${lead.qualification?.asset.repositionable_asset_band ?? "Assets"} · Score ${lead.score} · ${lead.temperature_key}`
+          : `${lead.first_name} ${lead.last_name} · ${lead.business_name} · Priority ${profile.overall_priority_score} · ${actionLabel(profile.recommended_action)}`,
+        created_at: new Date().toISOString(),
+        read: false,
+      });
+    }
   }
 
   // Attach brief in event payload for agents

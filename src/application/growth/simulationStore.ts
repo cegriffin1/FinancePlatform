@@ -17,6 +17,15 @@ import type {
   LeadScoreSnapshotRecord,
   ReservationStatus,
 } from "@/domain/types/lead-intelligence";
+import type { LeadQualificationProfile } from "@/domain/types/retirement-qualification";
+
+export type QualificationSnapshotRecord = {
+  id: UUID;
+  lead_id: UUID;
+  organization_id: UUID | null;
+  profile: LeadQualificationProfile;
+  created_at: string;
+};
 
 export type SimOrganization = {
   id: UUID;
@@ -104,7 +113,9 @@ export type SimLead = {
   created_at: string;
   updated_at: string;
   intelligence?: LeadIntelligenceProfile;
+  qualification?: LeadQualificationProfile;
   score_snapshots?: LeadScoreSnapshotRecord[];
+  qualification_snapshots?: QualificationSnapshotRecord[];
   sla?: LeadSlaTimers;
   pipeline_stage?: PipelineStage;
   stage_history?: Array<{ stage: PipelineStage; at: string }>;

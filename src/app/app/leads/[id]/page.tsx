@@ -104,13 +104,88 @@ export default function LeadDetailPage({
         </div>
         <div className="rounded-[12px] border border-[var(--altus-border)] bg-white px-5 py-4 text-center shadow-[var(--altus-shadow)]">
           <div className="text-3xl font-bold text-[var(--altus-blue)]">
-            {intel?.overall_priority_score ?? lead.score}
+            {lead.qualification?.opportunity.opportunity_score ??
+              intel?.overall_priority_score ??
+              lead.score}
           </div>
           <div className="text-xs font-semibold uppercase tracking-wide text-[var(--altus-text-secondary)]">
-            Priority
+            Opportunity Score
           </div>
         </div>
       </div>
+
+      {lead.qualification ? (
+        <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-5 shadow-[var(--altus-shadow)]">
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-[var(--altus-text-secondary)]">
+            AGENT CARD
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-6">
+            <div>
+              <div className="text-3xl font-bold text-[var(--altus-blue)]">
+                {lead.qualification.opportunity.opportunity_score} / 100
+              </div>
+              <div className="text-xs font-semibold uppercase text-[var(--altus-text-secondary)]">
+                Opportunity Score · Grade {lead.qualification.lead_grade}
+              </div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold">
+                {lead.qualification.temperature.temperature_score}°{" "}
+                <span className="text-lg">{lead.qualification.temperature.temperature.replace("_", " ")}</span>
+              </div>
+              <div className="text-xs font-semibold uppercase text-[var(--altus-text-secondary)]">
+                Temperature
+              </div>
+            </div>
+            {lead.qualification.asset.commercial_tier !== "BELOW_TARGET" ? (
+              <div className="rounded-full border border-[var(--altus-border)] px-3 py-1 text-sm font-bold tracking-wide">
+                {lead.qualification.asset.commercial_tier}
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              {lead.qualification.asset.repositionable_asset_band ?? "—"} Potentially
+              Repositionable
+            </div>
+            <div>
+              {lead.assessment_answers.decision_timeline ?? lead.qualification.intent_label}
+            </div>
+            <div>
+              Retiring {lead.assessment_answers.retirement_timing ?? "—"}
+            </div>
+            <div>
+              {lead.assessment_answers.primary_objective ?? "—"}
+              {lead.assessment_answers.advisor_improvement
+                ? ` · Improve: ${lead.assessment_answers.advisor_improvement}`
+                : ""}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 border-t border-[var(--altus-border)] pt-4 text-sm">
+            <div>
+              <span className="font-semibold">Profile:</span>{" "}
+              {lead.qualification.completeness.answered_core_questions} of{" "}
+              {lead.qualification.completeness.applicable_questions} applicable questions
+              answered ({lead.qualification.completeness.profile_completion_percentage}%)
+            </div>
+            <div>
+              <span className="font-semibold">Asset Status:</span>{" "}
+              {lead.qualification.asset.verification_status === "SETTER_VERIFIED"
+                ? "Setter Verified"
+                : "Self Reported"}
+            </div>
+            <div>
+              <span className="font-semibold">Next Step:</span>{" "}
+              {lead.qualification.recommended_next_step}
+            </div>
+            <div>
+              <span className="font-semibold">Commercial Status:</span>{" "}
+              {lead.qualification.commercial_status}
+              {lead.qualification.agent_eligible ? " · Agent eligible" : " · Not agent-eligible yet"}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {brief ? (
         <section className="rounded-[12px] border border-[var(--altus-border)] bg-[linear-gradient(145deg,#004C91,#0074C8)] p-5 text-white shadow-[var(--altus-shadow)]">
