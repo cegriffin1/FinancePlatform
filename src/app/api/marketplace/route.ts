@@ -7,6 +7,23 @@ import {
   LeadPricingService,
   MarketplacePurchaseService,
 } from "@/application/inventory/LeadInventoryService";
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  type PermissionKey,
+} from "@/domain/permissions/keys";
+import {
+  assertPermission,
+  AuthorizationError,
+} from "@/application/authorization";
+
+function grantedFromRequest(request: Request): PermissionKey[] {
+  const role = request.headers.get("x-altus-role") ?? "admin";
+  if (role === "setter") return DEFAULT_ROLE_PERMISSIONS.setter;
+  if (role === "sales") return DEFAULT_ROLE_PERMISSIONS.sales;
+  if (role === "manager") return DEFAULT_ROLE_PERMISSIONS.manager;
+  if (role === "admin" || role === "owner") return [...DEFAULT_ROLE_PERMISSIONS.admin];
+  return DEFAULT_ROLE_PERMISSIONS.employee;
+}
 
 export async function GET(request: Request) {
   const store = getSimStore();
@@ -20,6 +37,14 @@ export async function GET(request: Request) {
   }
 
   if (view === "admin") {
+    try {
+      assertPermission(grantedFromRequest(request), "reports.view_all");
+    } catch (e) {
+      if (e instanceof AuthorizationError) {
+        return NextResponse.json({ error: e.message }, { status: 403 });
+      }
+      throw e;
+    }
     return NextResponse.json({
       buckets: inventory.adminBuckets(store.leads),
       pricing_config: store.pricing_config,
@@ -78,6 +103,27 @@ export async function POST(request: Request) {
   const compliance = new LeadComplianceService();
   const pricing = new LeadPricingService();
   const purchaseSvc = new MarketplacePurchaseService();
+  const granted = grantedFromRequest(request);
+
+  const adminActions = new Set([
+    "update_pricing_config",
+    "update_inventory_config",
+    "extend",
+    "release",
+    "list_marketplace",
+    "suppress",
+    "revoke_sharing",
+  ]);
+  if (adminActions.has(action)) {
+    try {
+      assertPermission(granted, "reports.view_all");
+    } catch (e) {
+      if (e instanceof AuthorizationError) {
+        return NextResponse.json({ error: e.message }, { status: 403 });
+      }
+      throw e;
+    }
+  }
 
   try {
     if (action === "update_pricing_config") {

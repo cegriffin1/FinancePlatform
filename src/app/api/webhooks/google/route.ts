@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { ingestNativeProviderLead, verifyWebhookSignature } from "@/application/integrations/nativeLeadIngestion";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") ?? "local";
+  if (!rateLimit(`webhook-google:${ip}`, 30, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const rawBody = await request.text();
   const signature = request.headers.get("x-google-signature");
   if (!verifyWebhookSignature("google", rawBody, signature)) {

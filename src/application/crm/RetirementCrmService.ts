@@ -85,6 +85,7 @@ export class LeadOwnershipService {
     lead.assigned_organization_id = input.organizationId;
     if (input.ownerLabel) lead.assigned_agent_label = input.ownerLabel;
     if (input.ownerId) lead.assigned_agent_id = input.ownerId;
+    lead.ownership_history = [...(lead.ownership_history ?? []), ownership];
     lead.updated_at = nowIso();
     appendEvent(lead, "ownership_assigned", { ...ownership });
     if (

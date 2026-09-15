@@ -16,6 +16,12 @@ import { applyLeadIntelligence } from "@/application/intelligence/orchestrate";
 import { LeadIdentityResolutionService } from "@/application/intelligence/identityResolution";
 import { LeadOwnershipService } from "@/application/crm/RetirementCrmService";
 import { LeadInventoryService } from "@/application/inventory/LeadInventoryService";
+import {
+  PUBLIC_CONSENT_TEXT,
+  PUBLIC_CONSENT_VERSION,
+} from "@/domain/compliance/consent";
+import { defaultCompliance } from "@/domain/types/lead-inventory";
+import { AltusCRMProvider } from "@/infrastructure/providers/AltusCRMProvider";
 
 export type PublicLeadSubmission = {
   organizationSlug: string;
@@ -375,8 +381,18 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   // Persist before downstream processing
   store.leads.unshift(lead);
   new LeadInventoryService().initializeOnCreate(lead);
+  lead.compliance = defaultCompliance({
+    consent: input.contact.consent,
+    state: input.contact.state,
+    capturedAt: now,
+    consentText: PUBLIC_CONSENT_TEXT,
+    consentVersion: PUBLIC_CONSENT_VERSION,
+  });
+  lead.preferred_communication = input.contact.preferredContact;
   appendEvent(leadId, campaign.id, org?.id ?? null, "lead_submitted", {
     source: input.attribution.ad_provider ?? input.attribution.source_channel,
+    consent_version: PUBLIC_CONSENT_VERSION,
+    // Never log raw email/phone
   });
   campaign.analytics.assessment_completions += 1;
   campaign.analytics.leads += 1;
@@ -436,22 +452,57 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
         organization_id: org.id,
         mode: "subscriber_owned",
       });
-      store.notifications.unshift({
-        id: randomUUID(),
-        organization_id: org.id,
-        lead_id: lead.id,
-        title:
-          lead.intelligence?.quality_grade === "A+" ||
-          lead.intelligence?.quality_grade === "A"
-            ? `NEW ${lead.intelligence.quality_grade} LEAD`
-            : "New Campaign Lead",
-        body: `${lead.business_name} · ${lead.classifications[0]?.strategy_category ?? "Strategy"} · Priority ${lead.score}`,
-        created_at: now,
-        read: false,
-      });
+      try {
+        store.notifications.unshift({
+          id: randomUUID(),
+          organization_id: org.id,
+          lead_id: lead.id,
+          title:
+            lead.intelligence?.quality_grade === "A+" ||
+            lead.intelligence?.quality_grade === "A"
+              ? `NEW ${lead.intelligence.quality_grade} LEAD`
+              : "New Campaign Lead",
+          body: `${lead.business_name} · ${lead.classifications[0]?.strategy_category ?? "Strategy"} · Priority ${lead.score}`,
+          created_at: now,
+          read: false,
+        });
+        lead.processing_flags = {
+          ...lead.processing_flags,
+          notification_pending: false,
+        };
+      } catch {
+        lead.processing_flags = {
+          ...lead.processing_flags,
+          notification_pending: true,
+        };
+      }
+      try {
+        await new AltusCRMProvider().syncSimLead(lead);
+        lead.processing_flags = {
+          ...lead.processing_flags,
+          crm_sync_pending: false,
+        };
+      } catch {
+        lead.processing_flags = {
+          ...lead.processing_flags,
+          crm_sync_pending: true,
+        };
+      }
     } else {
       try {
         lead = distributePlatformLead(lead, campaign);
+        try {
+          await new AltusCRMProvider().syncSimLead(lead);
+          lead.processing_flags = {
+            ...lead.processing_flags,
+            crm_sync_pending: false,
+          };
+        } catch {
+          lead.processing_flags = {
+            ...lead.processing_flags,
+            crm_sync_pending: true,
+          };
+        }
       } catch {
         lead.status = "distribution_pending";
         lead.processing_flags = {

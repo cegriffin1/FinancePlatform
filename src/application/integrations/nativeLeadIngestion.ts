@@ -37,10 +37,12 @@ export function verifyWebhookSignature(
     google: process.env.GOOGLE_ADS_WEBHOOK_SECRET,
   };
 
-  // Simulation mode: accept signed or unsigned when no secret configured
+  // Simulation mode: accept unsigned only when not LIVE.
+  // LIVE mode fails closed without a configured secret.
   const secret = secrets[provider];
   if (!secret) {
-    return process.env.PROVIDER_MODE !== "LIVE";
+    if (process.env.PROVIDER_MODE === "LIVE") return false;
+    return true;
   }
   if (!signature) return false;
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");

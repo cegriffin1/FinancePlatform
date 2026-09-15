@@ -19,6 +19,16 @@ export const APP_NAV = [
     permission: null,
   },
   {
+    href: "/admin/mvp",
+    label: "MVP Ops",
+    permission: null,
+  },
+  {
+    href: "/app/analytics/executive",
+    label: "Executive",
+    permission: "reports.view_own",
+  },
+  {
     href: "/app/admin/lead-distribution",
     label: "Distribution",
     permission: null,

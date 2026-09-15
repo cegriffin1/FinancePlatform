@@ -38,6 +38,8 @@ export type LeadComplianceProfile = {
   restricted_jurisdictions: string[];
   consent_basis: string;
   consent_captured_at: string | null;
+  consent_text: string | null;
+  consent_version: string | null;
   sharing_permissions_note: string | null;
 };
 
@@ -47,6 +49,8 @@ export function defaultCompliance(input: {
   consent: boolean;
   state: string;
   capturedAt?: string | null;
+  consentText?: string | null;
+  consentVersion?: string | null;
 }): LeadComplianceProfile {
   return {
     marketing_consent: input.consent,
@@ -60,6 +64,8 @@ export function defaultCompliance(input: {
     restricted_jurisdictions: [],
     consent_basis: input.consent ? "web_form_express" : "none",
     consent_captured_at: input.consent ? (input.capturedAt ?? new Date().toISOString()) : null,
+    consent_text: input.consent ? (input.consentText ?? null) : null,
+    consent_version: input.consent ? (input.consentVersion ?? null) : null,
     sharing_permissions_note: null,
   };
 }

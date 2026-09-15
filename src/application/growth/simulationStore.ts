@@ -166,7 +166,16 @@ export type SimLead = {
     scoring_pending?: boolean;
     distribution_pending?: boolean;
     notification_pending?: boolean;
+    crm_sync_pending?: boolean;
   };
+  recovery?: {
+    is_partial: boolean;
+    last_completed_stage: string;
+    recovery_eligible: boolean;
+    saved_at: string;
+  };
+  ownership_history?: LeadOwnership[];
+  preferred_communication?: string;
   setter_verification?: SetterVerificationRecord;
   appointments?: LeadAppointment[];
   ownership?: LeadOwnership | null;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { processPublicLeadSubmission } from "@/application/growth/leadPipeline";
 import { getSimStore } from "@/application/growth/simulationStore";
+import { rateLimit } from "@/lib/rateLimit";
 
 const bodySchema = z.object({
   organizationSlug: z.string().min(1),
@@ -33,24 +34,10 @@ const bodySchema = z.object({
     .default({}),
 });
 
-const rateMap = new Map<string, { count: number; resetAt: number }>();
-
-function rateLimit(key: string, limit = 8, windowMs = 60_000) {
-  const now = Date.now();
-  const entry = rateMap.get(key);
-  if (!entry || entry.resetAt < now) {
-    rateMap.set(key, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (entry.count >= limit) return false;
-  entry.count += 1;
-  return true;
-}
-
 export async function POST(request: Request) {
   try {
     const ip = request.headers.get("x-forwarded-for") ?? "local";
-    if (!rateLimit(ip)) {
+    if (!rateLimit(`public-leads:${ip}`, 8, 60_000)) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
@@ -72,6 +59,10 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid request";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const safe = message.replace(
+      /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+      "[redacted-email]",
+    );
+    return NextResponse.json({ error: safe }, { status: 400 });
   }
 }

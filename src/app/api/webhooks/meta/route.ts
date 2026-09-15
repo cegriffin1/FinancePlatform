@@ -3,6 +3,7 @@ import {
   ingestNativeProviderLead,
   verifyWebhookSignature,
 } from "@/application/integrations/nativeLeadIngestion";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -12,6 +13,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") ?? "local";
+  if (!rateLimit(`webhook-meta:${ip}`, 30, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const rawBody = await request.text();
   const signature = request.headers.get("x-hub-signature-256");
 

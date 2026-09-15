@@ -1,10 +1,14 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AssessmentDecisionEngine } from "@/application/intelligence/assessmentDecision";
 import { BUSINESS_GROWTH_ASSESSMENT_V1 } from "@/application/growth/assessmentTemplate";
 import { AltusMark } from "@/components/brand/AltusLogo";
 import { cn } from "@/lib/cn";
+import {
+  PUBLIC_CONSENT_TEXT,
+  PUBLIC_CONSENT_VERSION,
+} from "@/domain/compliance/consent";
 
 type Props = {
   organizationSlug: string;
@@ -19,6 +23,10 @@ type Props = {
 
 const engine = new AssessmentDecisionEngine();
 
+function storageKey(org: string, campaign: string) {
+  return `altus-assessment:${org}:${campaign}`;
+}
+
 export function PublicCampaignExperience(props: Props) {
   const [phase, setPhase] = useState<"hero" | "questions" | "contact" | "done">(
     "hero",
@@ -29,11 +37,44 @@ export function PublicCampaignExperience(props: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [honeypot, setHoneypot] = useState("");
+  const [restored, setRestored] = useState(false);
   const [result, setResult] = useState<{
     score: number;
     temperature: string;
     strategies: string[];
   } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(
+        storageKey(props.organizationSlug, props.campaignSlug),
+      );
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        answers?: Record<string, string>;
+        phase?: "hero" | "questions" | "contact" | "done";
+      };
+      if (parsed.answers && Object.keys(parsed.answers).length > 0) {
+        setAnswers(parsed.answers);
+        setPhase(parsed.phase === "contact" ? "contact" : "questions");
+        setRestored(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, [props.organizationSlug, props.campaignSlug]);
+
+  useEffect(() => {
+    if (phase === "done" || phase === "hero") return;
+    try {
+      sessionStorage.setItem(
+        storageKey(props.organizationSlug, props.campaignSlug),
+        JSON.stringify({ answers, phase }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [answers, phase, props.organizationSlug, props.campaignSlug]);
 
   const ordered = useMemo(() => engine.getOrderedQuestions(answers), [answers]);
   const current = engine.nextQuestion(answers);
@@ -98,6 +139,13 @@ export function PublicCampaignExperience(props: Props) {
       });
       setAppointmentRequested(requestAppointment);
       setPhase("done");
+      try {
+        sessionStorage.removeItem(
+          storageKey(props.organizationSlug, props.campaignSlug),
+        );
+      } catch {
+        // ignore
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed");
     } finally {
@@ -125,9 +173,21 @@ export function PublicCampaignExperience(props: Props) {
       </header>
 
       <main className="mx-auto max-w-[720px] px-5 py-8 md:py-12">
-        <div className="mb-4 h-2 overflow-hidden rounded-full bg-white">
-          <div className="h-full bg-[var(--altus-blue)] transition-all" style={{ width: `${progress}%` }} />
+        <div
+          className="mb-4 h-2 overflow-hidden rounded-full bg-white"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+          aria-label="Assessment progress"
+        >
+          <div className="h-full bg-[var(--altus-blue)] transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
+        {restored ? (
+          <p className="mb-3 text-xs font-semibold text-[var(--altus-blue)]" role="status">
+            Progress restored from this device session.
+          </p>
+        ) : null}
 
         {phase === "hero" && (
           <section className="overflow-hidden rounded-[14px] bg-[linear-gradient(145deg,#004C91,#0074C8)] p-8 text-white shadow-[var(--altus-shadow)]">
@@ -142,7 +202,7 @@ export function PublicCampaignExperience(props: Props) {
             </p>
             <button
               type="button"
-              className="mt-6 rounded-md bg-white px-4 py-2.5 text-sm font-semibold text-[var(--altus-blue)]"
+              className="mt-6 min-h-11 rounded-md bg-white px-4 py-2.5 text-sm font-semibold text-[var(--altus-blue)]"
               onClick={() => setPhase("questions")}
             >
               {props.cta}
@@ -155,14 +215,16 @@ export function PublicCampaignExperience(props: Props) {
             <p className="text-xs font-semibold text-[var(--altus-text-secondary)]">
               Question {answeredCount + 1}
             </p>
-            <h2 className="mt-2 text-xl font-bold text-[var(--altus-text)]">
+            <h2 id="question-prompt" className="mt-2 text-xl font-bold text-[var(--altus-text)]">
               {current.prompt}
             </h2>
-            <div className="mt-5 space-y-2">
+            <div className="mt-5 space-y-2" role="radiogroup" aria-labelledby="question-prompt">
               {current.options.map((option) => (
                 <button
                   key={option}
                   type="button"
+                  role="radio"
+                  aria-checked={answers[current.key] === option}
                   onClick={() => {
                     const next = { ...answers, [current.key]: option };
                     setAnswers(next);
@@ -170,7 +232,7 @@ export function PublicCampaignExperience(props: Props) {
                     if (!following) setPhase("contact");
                   }}
                   className={cn(
-                    "block w-full rounded-[10px] border px-4 py-3 text-left text-sm font-medium transition hover:border-[var(--altus-blue)]",
+                    "block min-h-11 w-full rounded-[10px] border px-4 py-3 text-left text-sm font-medium transition hover:border-[var(--altus-blue)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--altus-blue)]",
                     answers[current.key] === option
                       ? "border-[var(--altus-blue)] bg-[var(--altus-soft)] text-[var(--altus-blue)]"
                       : "border-[var(--altus-border)]",
@@ -283,7 +345,8 @@ function ContactForm({
             <input
               required
               name={name}
-              className="w-full rounded-[8px] border border-[var(--altus-border)] px-3 py-2 text-sm font-normal"
+              aria-required="true"
+              className="min-h-11 w-full rounded-[8px] border border-[var(--altus-border)] px-3 py-2 text-sm font-normal"
             />
           </label>
         ))}
@@ -296,16 +359,25 @@ function ContactForm({
           </select>
         </label>
       </div>
-      <label className="mt-4 flex items-start gap-2 text-sm text-[var(--altus-text-secondary)]">
-        <input required type="checkbox" name="consent" className="mt-1" />
-        I agree to be contacted about educational resources and scheduling options.
+      <label className="mt-4 flex items-start gap-3 text-sm text-[var(--altus-text-secondary)]">
+        <input required type="checkbox" name="consent" className="mt-1 h-5 w-5" />
+        <span>
+          {PUBLIC_CONSENT_TEXT}
+          <span className="mt-1 block text-[10px] uppercase tracking-wide">
+            Consent version {PUBLIC_CONSENT_VERSION}
+          </span>
+        </span>
       </label>
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <p className="mt-3 text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="mt-5 flex flex-col gap-2 sm:flex-row">
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-md bg-[var(--altus-blue)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          className="min-h-11 rounded-md bg-[var(--altus-blue)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
           onClick={() => setWantAppointment(true)}
         >
           Schedule My Strategy Conversation
@@ -313,7 +385,7 @@ function ContactForm({
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-md border border-[var(--altus-border)] px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+          className="min-h-11 rounded-md border border-[var(--altus-border)] px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
           onClick={() => setWantAppointment(false)}
         >
           Submit without scheduling

@@ -24,7 +24,9 @@ export default function LeadInventoryAdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/marketplace?view=admin");
+    const res = await fetch("/api/marketplace?view=admin", {
+      headers: { "x-altus-role": "admin" },
+    });
     const json = await res.json();
     setBuckets(json.buckets ?? {});
     setPricing(json.pricing_config ?? null);
@@ -39,7 +41,10 @@ export default function LeadInventoryAdminPage() {
     setMessage(null);
     const res = await fetch("/api/marketplace", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-altus-role": "admin",
+      },
       body: JSON.stringify({ action, lead_id: leadId, ...extra }),
     });
     const json = await res.json();
@@ -55,7 +60,10 @@ export default function LeadInventoryAdminPage() {
     if (!pricing) return;
     const res = await fetch("/api/marketplace", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-altus-role": "admin",
+      },
       body: JSON.stringify({ action: "update_pricing_config", config: pricing }),
     });
     if (!res.ok) {
