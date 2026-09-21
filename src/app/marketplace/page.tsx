@@ -105,10 +105,12 @@ export default function MarketplacePage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Lead Marketplace</h1>
         <p className="mt-1 text-sm text-[var(--altus-text-secondary)]">
-          Compliant inventory only. PII is withheld until purchase. Consent and
-          sharing permissions gate every listing.
+          Recycled Opportunities — compliant inventory only. PII is withheld until
+          purchase. Consent and sharing permissions gate every listing.
         </p>
       </div>
+
+      <h2 className="text-lg font-bold tracking-tight">Recycled Opportunities</h2>
 
       <div className="grid gap-2 rounded-[12px] border border-[var(--altus-border)] bg-white p-4 shadow-[var(--altus-shadow)] sm:grid-cols-2 lg:grid-cols-5">
         <Filter label="State" value={state} onChange={setState} options={["", ...states]} />
@@ -122,7 +124,7 @@ export default function MarketplacePage() {
           label="Temperature"
           value={temperature}
           onChange={setTemperature}
-          options={["", "COLD", "WARM", "HOT", "VERY_HOT", "READY_NOW"]}
+          options={["", "HOT", "MEDIUM", "COLD", "WARM", "VERY_HOT", "READY_NOW"]}
         />
         <Filter
           label="Primary Objective"
@@ -214,16 +216,32 @@ export default function MarketplacePage() {
                 <div>{listing.state}</div>
                 <div>Age {listing.age_range ?? "—"}</div>
                 <div>
-                  {listing.asset_band ?? "—"} potentially repositionable
+                  {listing.asset_band ?? "—"}
+                  {listing.asset_band ? " · Potentially Repositionable" : ""}
                 </div>
-                <div>{listing.primary_objective ?? "—"}</div>
                 <div>
                   Original Opportunity Score: {listing.original_opportunity_score}
                 </div>
-                <div>Lead Age: {listing.lead_age_days} Days</div>
+                <div>
+                  Current Temperature:{" "}
+                  {listing.operational_temperature ?? listing.current_temperature}
+                </div>
+                <div>Original Source: {listing.original_channel ?? "—"}</div>
+                <div>
+                  Profile:{" "}
+                  {listing.profile_completion_percentage != null
+                    ? `${listing.profile_completion_percentage}% Complete`
+                    : "—"}
+                </div>
+                <div>Previous Status: {listing.previous_status ?? "—"}</div>
+                <div>
+                  Last Meaningful Interaction:{" "}
+                  {listing.days_since_meaningful_interaction ?? listing.lead_age_days}{" "}
+                  Days Ago
+                </div>
                 <div className="text-xs text-[var(--altus-text-secondary)]">
-                  Temp {listing.current_temperature}
-                  {listing.setter_verified ? " · Setter confirmed assets" : ""}
+                  {listing.setter_verified ? "Setter verified · " : ""}
+                  Asset amounts shown as self-reported unless verification basis exists.
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
@@ -236,11 +254,11 @@ export default function MarketplacePage() {
                     className="rounded-md border border-[var(--altus-border)] px-3 py-2 text-xs font-semibold"
                     onClick={() =>
                       setMessage(
-                        `Details (pre-purchase): ${listing.state} · ${listing.asset_tier} · Score ${listing.original_opportunity_score} · No PII disclosed`,
+                        `Opportunity preview (pre-purchase): ${listing.state} · ${listing.asset_tier} · Score ${listing.original_opportunity_score} · No PII disclosed`,
                       )
                     }
                   >
-                    View Details
+                    View Opportunity
                   </button>
                   <button
                     type="button"

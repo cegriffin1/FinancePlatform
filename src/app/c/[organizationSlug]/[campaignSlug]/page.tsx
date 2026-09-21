@@ -27,13 +27,18 @@ export default async function PublicCampaignPage({
       campaignSlug={campaignSlug}
       headline={campaign.landing_headline}
       support={campaign.landing_support}
-      cta={campaign.branding.custom_cta ?? "Start Assessment"}
+      cta={campaign.branding.custom_cta ?? "Start My Assessment"}
       thankYou={
         campaign.branding.thank_you_message ??
         "Thanks — an advisor will follow up shortly."
       }
       strategy={campaign.strategy}
       brandingName={campaign.branding.organization_name ?? "ALTUS"}
+      assessmentTemplateKey={
+        campaign.qualification_template_key ??
+        campaign.assessment_template_key ??
+        "retirement-opportunity-v1"
+      }
     />
   );
 }

@@ -11,13 +11,18 @@ export const INVENTORY_LIFECYCLE_STATUSES = [
   "QUALIFIED",
   "PURCHASED_ASSIGNED",
   "ACTIVE_OWNERSHIP",
+  "AGING",
   "EXPIRING",
+  "RECYCLING_REVIEW",
   "RELEASED",
   "MARKETPLACE_ELIGIBLE",
   "MARKETPLACE",
+  "LISTED",
+  "RESERVED",
   "REPURCHASED",
   "SOLD",
   "SUPPRESSED",
+  "EXPIRED",
   "NOT_ELIGIBLE_FOR_RESALE",
 ] as const;
 export type InventoryLifecycleStatus = (typeof INVENTORY_LIFECYCLE_STATUSES)[number];
@@ -89,7 +94,13 @@ export type MarketplaceListingPreview = {
   primary_objective: string | null;
   original_opportunity_score: number;
   current_temperature: string;
+  operational_temperature?: string;
   lead_age_days: number;
+  days_since_meaningful_interaction?: number;
+  original_channel?: string | null;
+  profile_completion_percentage?: number | null;
+  previous_status?: string | null;
+  recycled?: boolean;
   price_cents: number;
   exclusivity: "exclusive" | "shared";
   /** No PII in preview. */
@@ -141,6 +152,7 @@ export const DEFAULT_PRICING_CONFIG: LeadPricingConfig = {
   score_multiplier_per_point: 0.004,
   temperature_multipliers: {
     COLD: 0.7,
+    MEDIUM: 0.85,
     WARM: 0.85,
     HOT: 1.0,
     VERY_HOT: 1.15,

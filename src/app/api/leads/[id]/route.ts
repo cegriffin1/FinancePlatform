@@ -56,6 +56,13 @@ export async function POST(
       appointmentAt: lead.sla?.appointment_at,
       temperature: lead.temperature_key,
     });
+    // Opening a lead is NOT meaningful prospect interaction
+    const { LeadEngagementService } = await import(
+      "@/application/lifecycle/LeadLifecycleService"
+    );
+    new LeadEngagementService().recordSystemActivity(lead, "agent_opened_lead", {
+      note: "Agent opened lead record",
+    });
     store.events.push({
       id: randomUUID(),
       organization_id: lead.organization_id ?? store.organizations[0]!.id,
@@ -63,7 +70,7 @@ export async function POST(
       event_type: "lead_viewed",
       occurred_at: now,
       actor_profile_id: null,
-      payload: {},
+      payload: { meaningful: false },
       created_at: now,
     });
     return NextResponse.json({ ok: true, lead });

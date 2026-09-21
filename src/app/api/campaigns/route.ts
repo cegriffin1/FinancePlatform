@@ -13,6 +13,85 @@ export async function POST(request: Request) {
     const body = await request.json();
     const action = body.action as string;
 
+    if (action === "save_draft") {
+      const draft = z
+        .object({
+          owner_type: z.enum(["ALTUS_PLATFORM_CAMPAIGN", "SUBSCRIBER_CAMPAIGN"]),
+          name: z.string().min(2),
+          goal: z.string().optional(),
+          channels: z.array(z.string()).optional(),
+          locations: z.array(z.string()).optional(),
+          budget: z.number().optional(),
+          budget_mode: z.enum(["daily", "total"]).optional(),
+        })
+        .parse(body.draft);
+
+      const existingId =
+        typeof body.draftId === "string" && body.draftId.length > 0
+          ? body.draftId
+          : null;
+
+      if (existingId) {
+        const { getSimStore } = await import(
+          "@/application/growth/simulationStore"
+        );
+        const store = getSimStore();
+        const existing = store.campaigns.find((c) => c.id === existingId);
+        if (existing && existing.status === "draft") {
+          existing.name = draft.name;
+          existing.updated_at = new Date().toISOString();
+          if (draft.budget != null) {
+            existing.budget_cents = Math.round(draft.budget * 100);
+          }
+          if (draft.budget_mode) existing.budget_mode = draft.budget_mode;
+          return NextResponse.json({ ok: true, campaignId: existing.id });
+        }
+      }
+
+      const orgSlug =
+        draft.owner_type === "ALTUS_PLATFORM_CAMPAIGN" ? "altus" : "demo-org";
+      const campaign = createSimCampaign({
+        owner_type: draft.owner_type as CampaignOwnerType,
+        owner_id: "20000000-0000-4000-8000-000000000099",
+        organization_id:
+          draft.owner_type === "SUBSCRIBER_CAMPAIGN"
+            ? "20000000-0000-4000-8000-000000000003"
+            : null,
+        organization_slug: orgSlug,
+        name: draft.name,
+        description: "Draft campaign",
+        goal: "generate_leads",
+        strategy: "Retirement",
+        audience: { personas: ["professional"] },
+        territories: draft.locations?.includes("Nationwide")
+          ? ["US"]
+          : draft.locations?.length
+            ? draft.locations
+            : ["FL"],
+        channels: (draft.channels?.length
+          ? Array.from(
+              new Set(
+                draft.channels.map((c) =>
+                  c === "facebook" || c === "instagram" ? "meta" : c,
+                ),
+              ),
+            )
+          : ["linkedin"]) as never,
+        destination: "interactive_assessment",
+        budget_cents:
+          draft.budget != null ? Math.round(draft.budget * 100) : 300000,
+        template_id: null,
+        branding: {
+          organization_name: "ALTUS",
+          custom_cta: "Start Assessment",
+        },
+        qualification_template_key: "retirement-opportunity-v1",
+        distribution_config: { method: "campaign_owner" },
+        budget_mode: draft.budget_mode,
+      });
+      return NextResponse.json({ ok: true, campaignId: campaign.id });
+    }
+
     if (action === "create_and_launch") {
       const draft = z
         .object({
@@ -35,6 +114,7 @@ export async function POST(request: Request) {
           landing_support: z.string().optional(),
           branding: z.record(z.any()).optional(),
           organization_slug: z.string().optional(),
+          qualification_template_key: z.string().optional(),
         })
         .parse(body.draft);
 
@@ -62,9 +142,13 @@ export async function POST(request: Request) {
         template_id: null,
         branding: (draft.branding as never) ?? {
           organization_name: "ALTUS",
-          custom_cta: "Start Assessment",
+          custom_cta: "Start My Assessment",
         },
-        qualification_template_key: "business-growth-assessment-v1",
+        qualification_template_key:
+          draft.qualification_template_key ??
+          (draft.strategy.toLowerCase().includes("retirement")
+            ? "retirement-opportunity-v1"
+            : "business-growth-assessment-v1"),
         distribution_config:
           draft.owner_type === "ALTUS_PLATFORM_CAMPAIGN"
             ? { method: "priority_tier", preferPremierForPriority: true }

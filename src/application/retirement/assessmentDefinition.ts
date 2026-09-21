@@ -3,19 +3,42 @@
  * Questions are configuration — not UI hard-codes.
  */
 
+export type AssessmentStageKey =
+  | "ABOUT_YOU"
+  | "YOUR_MONEY"
+  | "YOUR_GOAL"
+  | "DYNAMIC_BRANCH"
+  | "YOUR_PRIORITIES"
+  | "YOUR_PLAN"
+  | "CONTACT";
+
+export const ASSESSMENT_STAGE_LABELS: Record<AssessmentStageKey, string> = {
+  ABOUT_YOU: "ABOUT YOU",
+  YOUR_MONEY: "YOUR MONEY",
+  YOUR_GOAL: "YOUR GOALS",
+  DYNAMIC_BRANCH: "YOUR GOALS",
+  YOUR_PRIORITIES: "YOUR PRIORITIES",
+  YOUR_PLAN: "YOUR PLAN",
+  CONTACT: "CONTACT",
+};
+
+/** US states for Q2 — configuration, not UI hard-codes. */
+export const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC",
+] as const;
+
 export type AssessmentQuestionDef = {
   id: string;
   number: number;
-  stage:
-    | "ABOUT_YOU"
-    | "YOUR_RETIREMENT"
-    | "YOUR_MONEY"
-    | "YOUR_PRIORITIES"
-    | "YOUR_PLAN"
-    | "ALMOST_DONE";
+  stage: AssessmentStageKey;
   label: string;
   type: "single" | "multi" | "slider" | "cards";
   options?: string[];
+  /** Consumer-facing labels keyed by stored option value */
+  option_labels?: Record<string, string>;
   required: boolean;
   branch?: "core" | "accumulation" | "income" | "both" | "conditional";
   condition?: { when_key: string; when_values: string[] };
@@ -32,7 +55,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "age_range",
       number: 1,
       stage: "ABOUT_YOU",
-      label: "Age range",
+      label: "How old are you?",
       type: "cards",
       options: ["Under 45", "45–49", "50–54", "55–59", "60–64", "65–69", "70–74", "75+"],
       required: true,
@@ -43,8 +66,9 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "state",
       number: 2,
       stage: "ABOUT_YOU",
-      label: "State of residence",
-      type: "single",
+      label: "Where do you currently live?",
+      type: "cards",
+      options: [...US_STATES],
       required: true,
       branch: "core",
       analytics_key: "state",
@@ -53,7 +77,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "employment",
       number: 3,
       stage: "ABOUT_YOU",
-      label: "Employment situation",
+      label: "Which best describes your current employment situation?",
       type: "cards",
       options: ["Working", "Self-employed", "Retired", "Semi-retired"],
       required: true,
@@ -63,8 +87,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "retirement_timing",
       number: 4,
-      stage: "YOUR_RETIREMENT",
-      label: "Expected retirement timing",
+      stage: "ABOUT_YOU",
+      label: "When do you expect to retire?",
       type: "cards",
       options: [
         "Already retired",
@@ -82,7 +106,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "marital_status",
       number: 5,
       stage: "ABOUT_YOU",
-      label: "Marital status",
+      label: "What is your marital status?",
       type: "cards",
       options: ["Single", "Married", "Widowed", "Divorced"],
       required: false,
@@ -93,7 +117,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "total_retirement_assets",
       number: 6,
       stage: "YOUR_MONEY",
-      label: "Investable / retirement assets",
+      label: "Approximately how much do you currently have in investable or retirement assets?",
       type: "cards",
       options: [
         "Under $250K",
@@ -113,7 +137,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "repositionable_assets",
       number: 7,
       stage: "YOUR_MONEY",
-      label: "Potentially repositionable assets",
+      label: "Approximately how much could potentially be repositioned into a different retirement strategy if you found a better fit?",
       type: "cards",
       options: [
         "Under $250K",
@@ -132,7 +156,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "asset_location",
       number: 8,
       stage: "YOUR_MONEY",
-      label: "Where money is held",
+      label: "Where is most of this money currently held?",
       type: "multi",
       options: [
         "401(k)",
@@ -154,7 +178,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "employer_assets",
       number: 9,
       stage: "YOUR_MONEY",
-      label: "Employer-sponsored assets",
+      label: "Are any retirement assets held with a current or former employer?",
       type: "cards",
       options: ["Current employer", "Former employer", "No employer-sponsored assets"],
       required: true,
@@ -166,7 +190,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "existing_annuity",
       number: 10,
       stage: "YOUR_MONEY",
-      label: "Existing annuity",
+      label: "Do you currently own an annuity?",
       type: "cards",
       options: [
         "None",
@@ -184,7 +208,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       id: "liquidity_timeline",
       number: 11,
       stage: "YOUR_MONEY",
-      label: "Liquidity timeline",
+      label: "How soon might you need access to a meaningful portion of this money?",
       type: "cards",
       options: ["Within 1 year", "1–3 years", "3–5 years", "5–10 years", "10+ years"],
       required: true,
@@ -195,10 +219,17 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "primary_objective",
       number: 12,
-      stage: "YOUR_PRIORITIES",
+      stage: "YOUR_GOAL",
       label: "What's most important with this money?",
       type: "cards",
       options: ["GROW", "INCOME", "PROTECT", "BALANCE", "LEGACY"],
+      option_labels: {
+        GROW: "Growth",
+        INCOME: "Income",
+        PROTECT: "Protection",
+        BALANCE: "Income + Protection",
+        LEGACY: "Legacy",
+      },
       required: true,
       branch: "core",
       scoring_dimension: "strategy_alignment",
@@ -208,8 +239,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "principal_protection",
       number: 13,
-      stage: "YOUR_PRIORITIES",
-      label: "Principal protection importance",
+      stage: "DYNAMIC_BRANCH",
+      label: "How important is protecting your principal from market losses?",
       type: "slider",
       required: true,
       branch: "accumulation",
@@ -223,8 +254,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "growth_participation",
       number: 14,
-      stage: "YOUR_PRIORITIES",
-      label: "Growth participation importance",
+      stage: "DYNAMIC_BRANCH",
+      label: "How important is continuing to participate in market growth potential?",
       type: "slider",
       required: true,
       branch: "accumulation",
@@ -238,8 +269,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "market_drop_concern",
       number: 15,
-      stage: "YOUR_PRIORITIES",
-      label: "Market drop concern",
+      stage: "DYNAMIC_BRANCH",
+      label: "If the market dropped 20–30%, how concerned would you be about your retirement savings?",
       type: "cards",
       options: [
         "Not concerned",
@@ -251,7 +282,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       branch: "accumulation",
       condition: {
         when_key: "primary_objective",
-        when_values: ["GROW", "PROTECT", "BALANCE"],
+        when_values: ["GROW", "PROTECT"],
       },
       scoring_dimension: "retirement_need",
       analytics_key: "market_drop_concern",
@@ -259,10 +290,15 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "risk_growth_preference",
       number: 16,
-      stage: "YOUR_PRIORITIES",
-      label: "Risk / growth preference",
+      stage: "DYNAMIC_BRANCH",
+      label: "Which sounds most like you?",
       type: "cards",
       options: ["A", "B", "C"],
+      option_labels: {
+        A: "I'm comfortable accepting market losses for potentially higher returns.",
+        B: "I'd prefer some growth potential without directly losing money due to market declines.",
+        C: "Protecting my principal is more important than maximizing growth.",
+      },
       required: true,
       branch: "accumulation",
       condition: {
@@ -276,8 +312,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "income_start",
       number: 13,
-      stage: "YOUR_PRIORITIES",
-      label: "Income start timing",
+      stage: "DYNAMIC_BRANCH",
+      label: "When would you like retirement income to begin?",
       type: "cards",
       options: ["Immediately", "Within 1 year", "1–3 years", "3–5 years", "5+ years"],
       required: true,
@@ -292,8 +328,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "desired_monthly_income",
       number: 14,
-      stage: "YOUR_PRIORITIES",
-      label: "Desired monthly income",
+      stage: "DYNAMIC_BRANCH",
+      label: "Approximately how much monthly retirement income would you like your strategy to help provide?",
       type: "cards",
       options: [
         "Under $2,500",
@@ -306,7 +342,7 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
       branch: "income",
       condition: {
         when_key: "primary_objective",
-        when_values: ["INCOME", "BALANCE"],
+        when_values: ["INCOME"],
       },
       scoring_dimension: "retirement_need",
       analytics_key: "desired_monthly_income",
@@ -314,8 +350,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "lifetime_income_importance",
       number: 15,
-      stage: "YOUR_PRIORITIES",
-      label: "Lifetime income importance",
+      stage: "DYNAMIC_BRANCH",
+      label: "How important is having retirement income designed to last throughout your lifetime?",
       type: "slider",
       required: true,
       branch: "income",
@@ -329,8 +365,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "existing_guaranteed_income",
       number: 16,
-      stage: "YOUR_PRIORITIES",
-      label: "Existing guaranteed income",
+      stage: "DYNAMIC_BRANCH",
+      label: "Do you currently have guaranteed lifetime income besides Social Security?",
       type: "cards",
       options: ["Pension", "Existing annuity", "Both", "Neither"],
       required: true,
@@ -346,8 +382,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "inflation_concern",
       number: 17,
-      stage: "YOUR_PLAN",
-      label: "Inflation concern",
+      stage: "YOUR_PRIORITIES",
+      label: "How concerned are you about inflation reducing your purchasing power during retirement?",
       type: "slider",
       required: true,
       branch: "core",
@@ -357,8 +393,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "liquidity_importance",
       number: 18,
-      stage: "YOUR_PLAN",
-      label: "Emergency liquidity importance",
+      stage: "YOUR_PRIORITIES",
+      label: "How important is maintaining access to some of your money for emergencies or unexpected expenses?",
       type: "slider",
       required: true,
       branch: "core",
@@ -368,8 +404,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "legacy_importance",
       number: 19,
-      stage: "YOUR_PLAN",
-      label: "Legacy importance",
+      stage: "YOUR_PRIORITIES",
+      label: "How important is leaving money to your spouse, children or beneficiaries?",
       type: "slider",
       required: false,
       branch: "core",
@@ -378,8 +414,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "healthcare_concern",
       number: 20,
-      stage: "YOUR_PLAN",
-      label: "Healthcare / LTC concern",
+      stage: "YOUR_PRIORITIES",
+      label: "How concerned are you about healthcare or long-term-care expenses affecting your retirement savings?",
       type: "slider",
       required: false,
       branch: "core",
@@ -389,8 +425,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "carrier_strength_importance",
       number: 21,
-      stage: "YOUR_PLAN",
-      label: "Carrier strength importance",
+      stage: "YOUR_PRIORITIES",
+      label: "How important is the financial strength and rating of the insurance company protecting retirement assets?",
       type: "slider",
       required: false,
       branch: "core",
@@ -399,8 +435,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "advisor_team_importance",
       number: 22,
-      stage: "YOUR_PLAN",
-      label: "Advisor team importance",
+      stage: "YOUR_PRIORITIES",
+      label: "How important is working with an experienced retirement planning team rather than making these decisions alone?",
       type: "slider",
       required: false,
       branch: "core",
@@ -409,8 +445,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "current_advisor",
       number: 23,
-      stage: "ALMOST_DONE",
-      label: "Working with a financial professional?",
+      stage: "YOUR_PLAN",
+      label: "Are you currently working with a financial professional?",
       type: "cards",
       options: [
         "Yes, actively",
@@ -425,8 +461,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "advisor_improvement",
       number: 23,
-      stage: "ALMOST_DONE",
-      label: "What would you most like improved?",
+      stage: "YOUR_PLAN",
+      label: "What would you most like improved about your current retirement strategy?",
       type: "cards",
       options: [
         "Growth",
@@ -452,8 +488,8 @@ export const RETIREMENT_OPPORTUNITY_V1 = {
     {
       id: "decision_timeline",
       number: 24,
-      stage: "ALMOST_DONE",
-      label: "Decision timeline",
+      stage: "YOUR_PLAN",
+      label: "If you found a strategy that better matched your retirement goals, when would you be comfortable making a change?",
       type: "cards",
       options: [
         "Immediately",

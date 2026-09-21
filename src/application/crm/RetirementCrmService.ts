@@ -17,6 +17,8 @@ import type { SimLead } from "@/application/growth/simulationStore";
 import { getSimStore } from "@/application/growth/simulationStore";
 import { AltusCRMProvider } from "@/infrastructure/providers/AltusCRMProvider";
 import { nextStageAfterOutcome } from "@/application/intelligence/lifecycle";
+import { SpeedToLeadService } from "@/application/crm/SpeedToLeadService";
+import { LeadEngagementService } from "@/application/lifecycle/LeadLifecycleService";
 
 function nowIso() {
   return new Date().toISOString();
@@ -207,6 +209,27 @@ export class RetirementCrmService {
     lead.contact_attempts = [...(lead.contact_attempts ?? []), attempt];
     if (!lead.pipeline_stage || lead.pipeline_stage === "NEW" || lead.pipeline_stage === "APPOINTMENT_SET" || lead.pipeline_stage === "VERIFIED") {
       this.setStage(lead, "CONTACTED", `Contact via ${channel}`);
+    }
+    const speed = new SpeedToLeadService();
+    speed.markContactAttempt(lead, attempt.created_at);
+    const meaningfulResults = [
+      "Connected",
+      "connected",
+      "Prospect Responded",
+      "Appointment Scheduled",
+      "Call Back Later",
+    ];
+    if (result && meaningfulResults.some((r) => result.includes(r))) {
+      speed.markMeaningfulContact(lead, attempt.created_at);
+      new LeadEngagementService().record(
+        lead,
+        channel === "call"
+          ? "prospect_answered_phone"
+          : channel === "sms"
+            ? "prospect_replied_sms"
+            : "prospect_replied_email",
+        { note: result },
+      );
     }
     appendEvent(lead, "contact_attempted", {
       channel,

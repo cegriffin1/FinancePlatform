@@ -49,7 +49,7 @@ export function AltusNav() {
             For Advisors
           </Link>
           <Link
-            href="#assessment"
+            href="#retirement-assessment"
             className="rounded-md bg-[var(--altus-blue)] px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-[var(--altus-blue-deep)]"
           >
             Start Assessment
@@ -88,7 +88,7 @@ export function AltusNav() {
             For Advisors
           </Link>
           <Link
-            href="#assessment"
+            href="#retirement-assessment"
             className="mt-1 rounded-md bg-[var(--altus-blue)] px-3 py-2 text-center text-sm font-semibold text-white"
             onClick={() => setOpen(false)}
           >

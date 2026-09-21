@@ -17,11 +17,21 @@ import { LeadIdentityResolutionService } from "@/application/intelligence/identi
 import { LeadOwnershipService } from "@/application/crm/RetirementCrmService";
 import { LeadInventoryService } from "@/application/inventory/LeadInventoryService";
 import {
+  LeadTemperatureTransitionService,
+  LeadEngagementService,
+} from "@/application/lifecycle/LeadLifecycleService";
+import {
+  SpeedToLeadService,
+  issueHotLeadAlert,
+} from "@/application/crm/SpeedToLeadService";
+import {
   PUBLIC_CONSENT_TEXT,
   PUBLIC_CONSENT_VERSION,
 } from "@/domain/compliance/consent";
 import { defaultCompliance } from "@/domain/types/lead-inventory";
 import { AltusCRMProvider } from "@/infrastructure/providers/AltusCRMProvider";
+import { AssessmentSessionService } from "@/application/growth/AssessmentSessionService";
+import { RetirementAssessmentEngine } from "@/application/retirement/RetirementAssessmentEngine";
 
 export type PublicLeadSubmission = {
   organizationSlug: string;
@@ -43,14 +53,18 @@ export type PublicLeadSubmission = {
     utm_medium?: string | null;
     utm_campaign?: string | null;
     utm_content?: string | null;
+    utm_term?: string | null;
     referrer?: string | null;
     source_channel?: string | null;
     landing_page?: string | null;
     ad_provider?: string | null;
     external_campaign_id?: string | null;
     external_ad_group_id?: string | null;
+    external_ad_set_id?: string | null;
+    external_ad_id?: string | null;
     external_creative_id?: string | null;
   };
+  sessionId?: string | null;
   submissionKey?: string;
   honeypot?: string | null;
   submissionStartedAt?: string | null;
@@ -79,9 +93,23 @@ function appendEvent(
 }
 
 function classifyStrategies(answers: Record<string, string>) {
+  const now = new Date().toISOString();
+  if (answers.primary_objective || answers.repositionable_assets) {
+    return [
+      {
+        id: randomUUID(),
+        organization_id: "",
+        lead_id: "",
+        strategy_category: "Retirement",
+        strategy_confidence: 0.95,
+        classification_reason: `Retirement assessment · objective ${answers.primary_objective ?? "unspecified"}`,
+        classification_version: "retirement-strategy-map-v1",
+        created_at: now,
+      },
+    ];
+  }
   const priority = answers.financial_priority ?? "";
   const mapped = PRIORITY_TO_STRATEGY[priority] ?? ["Business Growth"];
-  const now = new Date().toISOString();
   return mapped.map((strategy) => ({
     id: randomUUID(),
     organization_id: "",
@@ -163,6 +191,14 @@ function distributePlatformLead(lead: SimLead, campaign: SimCampaign) {
   if (!selected) {
     lead.distribution_status = "unassigned_pool";
     lead.status = "unassigned_pool";
+    const stateReason = rejections.find((r) =>
+      r.reason.toLowerCase().includes("territory"),
+    );
+    lead.routing_attention =
+      stateReason?.reason ??
+      rejections[0]?.reason ??
+      `No eligible ${lead.state} agent`;
+    lead.assignment_reason = null;
     lead.distribution = {
       id: randomUUID(),
       lead_id: lead.id,
@@ -174,6 +210,9 @@ function distributePlatformLead(lead: SimLead, campaign: SimCampaign) {
       rule_version: "dist-vertical-v1",
       decided_at: new Date().toISOString(),
     };
+    appendEvent(lead.id, campaign.id, null, "routing_attention_required", {
+      reason: lead.routing_attention,
+    });
     return lead;
   }
 
@@ -183,6 +222,14 @@ function distributePlatformLead(lead: SimLead, campaign: SimCampaign) {
   lead.assigned_agent_label = `${selected.name} Advisor`;
   lead.distribution_status = "assigned";
   lead.status = "qualified";
+  lead.routing_attention = null;
+  lead.assignment_reason = [
+    `${lead.state} territory`,
+    strategies[0] ? `${strategies[0]} specialist` : "Eligible strategies",
+    "Eligible",
+    "Capacity available",
+    "Round-robin selection",
+  ].join(" · ");
   new LeadOwnershipService().assign(lead, {
     organizationId: selected.id,
     ownerLabel: `${selected.name} Advisor`,
@@ -208,17 +255,19 @@ function distributePlatformLead(lead: SimLead, campaign: SimCampaign) {
   appendEvent(lead.id, campaign.id, selected.id, "lead_assigned", {
     organization_id: selected.id,
     organization_name: selected.name,
+    reason: lead.assignment_reason,
   });
+  new SpeedToLeadService().markAssigned(lead);
+  if (lead.operational_temperature === "HOT") {
+    issueHotLeadAlert(lead);
+  }
 
   store.notifications.unshift({
     id: randomUUID(),
     organization_id: selected.id,
     lead_id: lead.id,
-    title:
-      lead.temperature_key === "PRIORITY" || lead.temperature_key === "HOT"
-        ? "New Priority Lead"
-        : "New Lead Assigned",
-    body: `${lead.business_name} · ${lead.classifications[0]?.strategy_category ?? "Strategy"} · Score ${lead.score} · ${lead.state}`,
+    title: "New Platform Lead",
+    body: `${lead.business_name} · ${lead.state} · Score ${lead.score}`,
     created_at: new Date().toISOString(),
     read: false,
   });
@@ -241,6 +290,43 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
 
   if (!input.contact.consent) throw new Error("Consent is required");
   if (!input.contact.email.includes("@")) throw new Error("Valid email required");
+
+  const sessions = new AssessmentSessionService();
+  const session = input.sessionId ? sessions.get(input.sessionId) : null;
+  const mergedAnswers = {
+    ...(session?.answers ?? {}),
+    ...input.answers,
+  };
+  const mergedAttribution = {
+    ...input.attribution,
+    utm_source: input.attribution.utm_source ?? session?.attribution.utm_source,
+    utm_medium: input.attribution.utm_medium ?? session?.attribution.utm_medium,
+    utm_campaign:
+      input.attribution.utm_campaign ?? session?.attribution.utm_campaign,
+    utm_content: input.attribution.utm_content ?? session?.attribution.utm_content,
+    utm_term: input.attribution.utm_term ?? session?.attribution.utm_term,
+    referrer: input.attribution.referrer ?? session?.attribution.referrer,
+    source_channel:
+      input.attribution.source_channel ??
+      session?.attribution.source_channel ??
+      session?.attribution.provider,
+    landing_page:
+      input.attribution.landing_page ?? session?.attribution.landing_page,
+    ad_provider:
+      input.attribution.ad_provider ?? session?.attribution.provider,
+    external_campaign_id:
+      input.attribution.external_campaign_id ??
+      session?.attribution.external_campaign_id,
+    external_ad_group_id:
+      input.attribution.external_ad_set_id ??
+      session?.attribution.external_ad_set_id,
+    external_ad_set_id:
+      input.attribution.external_ad_set_id ??
+      session?.attribution.external_ad_set_id,
+    external_creative_id:
+      input.attribution.external_creative_id ??
+      session?.attribution.external_creative_id,
+  };
 
   const identity = new LeadIdentityResolutionService().resolve(
     {
@@ -268,7 +354,13 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
     appendEvent(existing.id, campaign.id, existing.organization_id, "campaign_touch", {
       mode: "duplicate_submission",
     });
-    return { lead: existing, duplicate: true as const };
+    return {
+      lead: existing,
+      duplicate: true as const,
+      consumerProfile: new RetirementAssessmentEngine().consumerProfile(
+        existing.assessment_answers,
+      ),
+    };
   }
 
   const now = new Date().toISOString();
@@ -279,7 +371,7 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
       : null;
 
   appendEvent(leadId, campaign.id, org?.id ?? null, "assessment_started");
-  for (const [key, value] of Object.entries(input.answers)) {
+  for (const [key, value] of Object.entries(mergedAnswers)) {
     appendEvent(leadId, campaign.id, org?.id ?? null, "assessment_question_completed", {
       question: key,
       answer: value,
@@ -292,13 +384,13 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
     appendEvent(leadId, campaign.id, org?.id ?? null, "appointment_requested");
   }
 
-  const scored = applyScoringRules(input.answers, {
+  const scored = applyScoringRules(mergedAnswers, {
     assessmentCompleted: true,
     contactSubmitted: true,
     appointmentRequested: input.appointmentRequested,
   });
 
-  const classifications = classifyStrategies(input.answers).map((c) => ({
+  const classifications = classifyStrategies(mergedAnswers).map((c) => ({
     ...c,
     lead_id: leadId,
     organization_id: org?.id ?? store.organizations[0]!.id,
@@ -314,21 +406,24 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
     platform_campaign_id:
       campaign.owner_type === "ALTUS_PLATFORM_CAMPAIGN" ? campaign.id : null,
     owner_type: campaign.owner_type,
-    ad_provider: (input.attribution.ad_provider as LeadAttribution["ad_provider"]) ?? null,
-    external_campaign_id: input.attribution.external_campaign_id ?? null,
-    ad_set_id: input.attribution.external_ad_group_id ?? null,
-    creative_id: input.attribution.external_creative_id ?? null,
-    source: input.attribution.source_channel ?? "campaign",
-    medium: input.attribution.utm_medium ?? "simulation",
-    utm_source: input.attribution.utm_source ?? null,
-    utm_medium: input.attribution.utm_medium ?? null,
-    utm_campaign: input.attribution.utm_campaign ?? null,
-    utm_content: input.attribution.utm_content ?? null,
+    ad_provider: (mergedAttribution.ad_provider as LeadAttribution["ad_provider"]) ?? null,
+    external_campaign_id: mergedAttribution.external_campaign_id ?? null,
+    ad_set_id:
+      mergedAttribution.external_ad_set_id ??
+      mergedAttribution.external_ad_group_id ??
+      null,
+    creative_id: mergedAttribution.external_creative_id ?? null,
+    source: mergedAttribution.source_channel ?? "campaign",
+    medium: mergedAttribution.utm_medium ?? "simulation",
+    utm_source: mergedAttribution.utm_source ?? null,
+    utm_medium: mergedAttribution.utm_medium ?? null,
+    utm_campaign: mergedAttribution.utm_campaign ?? null,
+    utm_content: mergedAttribution.utm_content ?? null,
     landing_page:
-      input.attribution.landing_page ??
+      mergedAttribution.landing_page ??
       `/c/${campaign.organization_slug}/${campaign.slug}`,
     territory: input.contact.state,
-    captured_at: now,
+    captured_at: session?.attribution.first_touch_at ?? now,
   };
   Object.freeze(attribution);
 
@@ -361,14 +456,20 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
     },
     first_name: input.contact.firstName,
     last_name: input.contact.lastName,
-    business_name: input.contact.businessName,
+    business_name:
+      input.contact.businessName ||
+      `${input.contact.firstName} ${input.contact.lastName}`.trim(),
     email: input.contact.email,
     phone: input.contact.phone,
     state: input.contact.state,
     preferred_contact: input.contact.preferredContact,
     consent: input.contact.consent,
-    assessment_answers: input.answers,
-    assessment_template_version: BUSINESS_GROWTH_ASSESSMENT_V1.version,
+    assessment_answers: mergedAnswers,
+    assessment_template_version:
+      session?.assessment_version ??
+      campaign.assessment_template_key ??
+      campaign.qualification_template_key ??
+      BUSINESS_GROWTH_ASSESSMENT_V1.version,
     attribution,
     classifications,
     distribution: null,
@@ -416,11 +517,31 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
       lead.aging.original_temperature = lead.temperature_key;
       lead.aging.current_temperature = lead.temperature_key;
     }
+    // Seed operational HOT/MEDIUM/COLD without destroying Opportunity Score
+    const tempScore =
+      lead.qualification?.temperature.temperature_score ?? lead.score;
+    new LeadTemperatureTransitionService().seedInitial(
+      lead,
+      tempScore,
+      lead.qualification?.temperature.temperature ?? lead.temperature_key,
+      "Assessment completed",
+    );
+    new LeadEngagementService().record(lead, "assessment_completed", {
+      note: "Initial assessment completion",
+    });
+    new SpeedToLeadService().ensure(lead);
     appendEvent(leadId, campaign.id, org?.id ?? null, "lead_scored", {
       score: lead.score,
       temperature: lead.temperature_key,
+      operational_temperature: lead.operational_temperature,
       grade: lead.intelligence?.quality_grade,
     });
+    if (lead.operational_temperature === "HOT") {
+      issueHotLeadAlert(lead);
+      appendEvent(leadId, campaign.id, org?.id ?? null, "hot_lead_alert", {
+        score: lead.score,
+      });
+    }
   } catch {
     lead.status = "scoring_pending";
     lead.processing_flags = { scoring_pending: true };
@@ -448,24 +569,38 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
         ownerLabel: `${org.name} Advisor`,
         source: "subscriber_campaign",
       });
+      lead.assignment_reason = [
+        "Subscriber campaign owner",
+        lead.state ? `${lead.state} territory` : null,
+        "Capacity available",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      lead.routing_attention = null;
+      new SpeedToLeadService().markAssigned(lead);
       appendEvent(leadId, campaign.id, org.id, "lead_assigned", {
         organization_id: org.id,
         mode: "subscriber_owned",
+        reason: lead.assignment_reason,
       });
       try {
-        store.notifications.unshift({
-          id: randomUUID(),
-          organization_id: org.id,
-          lead_id: lead.id,
-          title:
-            lead.intelligence?.quality_grade === "A+" ||
-            lead.intelligence?.quality_grade === "A"
-              ? `NEW ${lead.intelligence.quality_grade} LEAD`
-              : "New Campaign Lead",
-          body: `${lead.business_name} · ${lead.classifications[0]?.strategy_category ?? "Strategy"} · Priority ${lead.score}`,
-          created_at: now,
-          read: false,
-        });
+        if (lead.operational_temperature === "HOT") {
+          issueHotLeadAlert(lead);
+        } else {
+          store.notifications.unshift({
+            id: randomUUID(),
+            organization_id: org.id,
+            lead_id: lead.id,
+            title:
+              lead.intelligence?.quality_grade === "A+" ||
+              lead.intelligence?.quality_grade === "A"
+                ? `NEW ${lead.intelligence.quality_grade} LEAD`
+                : "New Campaign Lead",
+            body: `${lead.business_name} · ${lead.classifications[0]?.strategy_category ?? "Strategy"} · Priority ${lead.score}`,
+            created_at: now,
+            read: false,
+          });
+        }
         lead.processing_flags = {
           ...lead.processing_flags,
           notification_pending: false,
@@ -514,7 +649,14 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   }
 
   if (lead.score >= 60) campaign.analytics.qualified_leads += 1;
-  if (lead.temperature_key === "HOT") campaign.analytics.hot_leads += 1;
+  const opTemp = lead.operational_temperature;
+  if (opTemp === "HOT" || lead.temperature_key === "HOT") {
+    campaign.analytics.hot_leads += 1;
+  } else if (opTemp === "MEDIUM") {
+    campaign.analytics.medium_leads = (campaign.analytics.medium_leads ?? 0) + 1;
+  } else if (opTemp === "COLD") {
+    campaign.analytics.cold_leads = (campaign.analytics.cold_leads ?? 0) + 1;
+  }
   if (lead.temperature_key === "PRIORITY") campaign.analytics.priority_leads += 1;
   if (input.appointmentRequested) campaign.analytics.appointments += 1;
 
@@ -522,7 +664,17 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   const idx = store.leads.findIndex((l) => l.id === lead.id);
   if (idx >= 0) store.leads[idx] = lead;
 
-  return { lead, duplicate: false as const };
+  if (input.sessionId) {
+    sessions.markCompleted(input.sessionId, lead.id);
+  }
+
+  return {
+    lead,
+    duplicate: false as const,
+    consumerProfile: new RetirementAssessmentEngine().consumerProfile(
+      lead.assessment_answers,
+    ),
+  };
 }
 
 export async function generateTestLead(campaignId: string) {

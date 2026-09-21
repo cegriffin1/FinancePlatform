@@ -1,5 +1,6 @@
 import { AltusNav } from "@/components/altus/AltusNav";
 import { AltusHero } from "@/components/altus/AltusHero";
+import { AltusRetirementAssessmentSection } from "@/components/altus/AltusRetirementAssessmentSection";
 import { AltusMetricStrip } from "@/components/altus/AltusMetricStrip";
 import { AltusJourneyNav } from "@/components/altus/AltusJourneyNav";
 import { AltusStartHere } from "@/components/altus/AltusStartHere";
@@ -17,6 +18,7 @@ export default function HomePage() {
       <AltusNav />
       <main>
         <AltusHero />
+        <AltusRetirementAssessmentSection />
         <AltusMetricStrip />
         <AltusJourneyNav />
         <AltusStartHere />

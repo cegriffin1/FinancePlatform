@@ -1,24 +1,25 @@
 import {
   DEFAULT_INVENTORY_CONFIG,
   DEFAULT_PRICING_CONFIG,
-  type ComplianceGateResult,
   type InventoryConfig,
   type InventoryExtension,
   type InventoryLifecycleStatus,
-  type LeadComplianceProfile,
   type LeadPricingConfig,
   type LeadPurchaseRecord,
   type LeadReservation,
   type MarketplaceListingPreview,
   type PricingInputs,
   type ScoreAgingSnapshot,
-  defaultCompliance,
 } from "@/domain/types/lead-inventory";
 import { computeOwnershipExpiry } from "@/domain/types/retirement-crm";
 import type { SimLead } from "@/application/growth/simulationStore";
 import { getSimStore } from "@/application/growth/simulationStore";
 import { LeadOwnershipService } from "@/application/crm/RetirementCrmService";
+import { LeadComplianceService } from "@/application/inventory/LeadComplianceService";
+import { LeadLifecycleAgingService } from "@/application/lifecycle/LeadLifecycleService";
 import { randomUUID } from "crypto";
+
+export { LeadComplianceService };
 
 function nowIso() {
   return new Date().toISOString();
@@ -45,67 +46,6 @@ function appendEvent(lead: SimLead, type: string, payload: Record<string, unknow
   });
 }
 
-export class LeadComplianceService {
-  ensure(lead: SimLead): LeadComplianceProfile {
-    if (!lead.compliance) {
-      lead.compliance = defaultCompliance({
-        consent: lead.consent,
-        state: lead.state,
-        capturedAt: lead.created_at,
-      });
-    }
-    return lead.compliance;
-  }
-
-  suppress(lead: SimLead, reason: string) {
-    const c = this.ensure(lead);
-    c.suppressed = true;
-    c.suppression_reason = reason;
-    c.resale_permitted = false;
-    lead.inventory_status = "SUPPRESSED";
-    appendEvent(lead, "lead_suppressed", { reason });
-    lead.updated_at = nowIso();
-    return c;
-  }
-
-  revokeSharing(lead: SimLead, note?: string) {
-    const c = this.ensure(lead);
-    c.data_sharing_permitted = false;
-    c.resale_permitted = false;
-    c.sharing_permissions_note = note ?? "Sharing permission revoked";
-    if (lead.inventory_status === "MARKETPLACE" || lead.inventory_status === "MARKETPLACE_ELIGIBLE") {
-      lead.inventory_status = "NOT_ELIGIBLE_FOR_RESALE";
-      lead.marketplace_listed = false;
-    }
-    appendEvent(lead, "sharing_permission_revoked", { note: note ?? null });
-    lead.updated_at = nowIso();
-    return c;
-  }
-
-  /**
-   * Never make a lead purchasable when consent/permissions do not permit it.
-   */
-  evaluateMarketplaceEligibility(lead: SimLead): ComplianceGateResult {
-    const c = this.ensure(lead);
-    const reasons: string[] = [];
-    if (!c.contact_consent) reasons.push("Missing contact consent");
-    if (!c.data_sharing_permitted) reasons.push("Data sharing not permitted");
-    if (!c.resale_permitted) reasons.push("Resale not permitted");
-    if (c.suppressed) reasons.push(`Suppressed: ${c.suppression_reason ?? "policy"}`);
-    if (c.restricted_jurisdictions.includes(c.jurisdiction)) {
-      reasons.push(`Jurisdiction ${c.jurisdiction} restricts resale`);
-    }
-    if (!c.consent_basis || c.consent_basis === "none") {
-      reasons.push("No valid consent basis on file");
-    }
-    const ageDays = daysBetween(lead.created_at);
-    if (ageDays > c.retention_policy_days) {
-      reasons.push("Beyond retention policy");
-    }
-    return { eligible: reasons.length === 0, reasons };
-  }
-}
-
 export class LeadAgingService {
   ensureSnapshot(lead: SimLead): ScoreAgingSnapshot {
     if (!lead.aging) {
@@ -121,31 +61,20 @@ export class LeadAgingService {
   }
 
   /**
-   * Temperature/score may decay with time. Opportunity profile/history is NOT rewritten.
-   * original_* values are immutable once set.
+   * Temperature may cool with inactivity. Opportunity Score is NEVER decayed by time.
+   * original_* values are immutable once set. Uses meaningful-interaction clock.
    */
   applyDecay(lead: SimLead, now = Date.now()) {
     const snap = this.ensureSnapshot(lead);
-    const ageDays = daysBetween(lead.ownership?.ownership_started_at ?? lead.created_at, now);
-    // Preserve originals
-    const originalScore = snap.original_score;
-    const originalTemp = snap.original_temperature;
+    // Preserve opportunity score forever
+    snap.current_score = snap.original_score;
+    lead.score = snap.original_score;
 
-    const decay = Math.min(35, Math.floor(ageDays / 7) * 3);
-    const currentScore = Math.max(20, originalScore - decay);
-    let currentTemp = originalTemp;
-    if (ageDays >= 45) currentTemp = "COLD";
-    else if (ageDays >= 30) currentTemp = "WARM";
-    else if (ageDays >= 14 && ["READY_NOW", "VERY_HOT"].includes(originalTemp)) {
-      currentTemp = "HOT";
-    }
+    new LeadLifecycleAgingService().run(lead, now);
 
-    snap.current_score = currentScore;
-    snap.current_temperature = currentTemp;
+    snap.current_temperature =
+      lead.operational_temperature ?? lead.temperature_key;
     snap.last_decayed_at = nowIso();
-    // Do not rewrite original score/temperature or qualification history
-    lead.score = currentScore;
-    lead.temperature_key = currentTemp;
     lead.updated_at = nowIso();
     return snap;
   }
@@ -224,6 +153,12 @@ export class LeadInventoryService {
     lead.inventory_status = lead.qualification ? "QUALIFIED" : "NEW";
     lead.lead_version = lead.lead_version ?? 1;
     lead.marketplace_listed = false;
+    if (!lead.last_meaningful_interaction_at) {
+      lead.last_meaningful_interaction_at = lead.created_at;
+    }
+    if (!lead.last_activity_at) {
+      lead.last_activity_at = lead.created_at;
+    }
   }
 
   markPurchasedAssigned(lead: SimLead) {
@@ -328,8 +263,14 @@ export class LeadInventoryService {
   }
 
   release(lead: SimLead, reason: string) {
+    const previous = lead.ownership;
+    if (previous) {
+      lead.ownership_history = [...(lead.ownership_history ?? []), previous];
+      // Preserve history — do not delete prior agent relationship from history
+    }
     lead.inventory_status = "RELEASED";
     lead.marketplace_listed = false;
+    appendEvent(lead, "LeadOwnershipReleased", { reason });
     appendEvent(lead, "ownership_released", { reason });
 
     const gate = this.compliance.evaluateMarketplaceEligibility(lead);
@@ -341,6 +282,7 @@ export class LeadInventoryService {
     }
 
     lead.inventory_status = "MARKETPLACE_ELIGIBLE";
+    appendEvent(lead, "LeadMarketplaceEligible", {});
     appendEvent(lead, "marketplace_eligible", {});
     lead.updated_at = nowIso();
     return lead;
@@ -374,18 +316,39 @@ export class LeadInventoryService {
   toPreview(lead: SimLead): MarketplaceListingPreview {
     const aging = this.aging.ensureSnapshot(lead);
     const a = lead.assessment_answers;
+    const recycled =
+      Boolean(lead.recycled) ||
+      (lead.purchase_history?.length ?? 0) > 0 ||
+      lead.inventory_status === "MARKETPLACE" ||
+      lead.inventory_status === "MARKETPLACE_ELIGIBLE";
     return {
       lead_id: lead.id,
-      lead_type: "ANNUITY_OPPORTUNITY",
-      title: "ANNUITY OPPORTUNITY",
+      lead_type: recycled ? "RECYCLED_RETIREMENT_OPPORTUNITY" : "ANNUITY_OPPORTUNITY",
+      title: recycled
+        ? "RECYCLED RETIREMENT OPPORTUNITY"
+        : "ANNUITY OPPORTUNITY",
       state: lead.state,
       age_range: a.age_range ?? null,
       asset_band: a.repositionable_assets ?? null,
       asset_tier: lead.qualification?.asset.commercial_tier ?? null,
       primary_objective: a.primary_objective ?? null,
       original_opportunity_score: aging.original_score,
-      current_temperature: aging.current_temperature,
+      current_temperature:
+        lead.operational_temperature ?? aging.current_temperature,
+      operational_temperature: lead.operational_temperature,
       lead_age_days: daysBetween(lead.created_at),
+      days_since_meaningful_interaction:
+        lead.days_since_meaningful_interaction ??
+        daysBetween(lead.last_meaningful_interaction_at ?? lead.created_at),
+      original_channel:
+        lead.attribution?.ad_provider ??
+        lead.attribution?.source ??
+        lead.attribution?.utm_source ??
+        null,
+      profile_completion_percentage:
+        lead.qualification?.completeness.profile_completion_percentage ?? null,
+      previous_status: lead.pipeline_stage ?? lead.status ?? null,
+      recycled,
       price_cents: lead.marketplace_price_cents ?? this.pricing.priceLead(lead),
       exclusivity: "exclusive",
       setter_verified:
@@ -402,11 +365,26 @@ export class LeadInventoryService {
       const set = new Set(Array.isArray(status) ? status : [status]);
       return refresh.filter((l) => set.has(l.inventory_status ?? "NEW"));
     };
+    const ops = (t: string) =>
+      refresh.filter(
+        (l) =>
+          (l.operational_temperature ??
+            (l.temperature_key === "COLD"
+              ? "COLD"
+              : l.temperature_key === "WARM" || l.temperature_key === "MEDIUM"
+                ? "MEDIUM"
+                : "HOT")) === t,
+      );
     return {
-      active: bucket(["ACTIVE_OWNERSHIP", "PURCHASED_ASSIGNED"]),
+      active: bucket(["ACTIVE_OWNERSHIP", "PURCHASED_ASSIGNED", "AGING"]),
+      hot: ops("HOT"),
+      medium: ops("MEDIUM"),
+      cold: ops("COLD"),
+      recycling_soon: bucket(["AGING", "RECYCLING_REVIEW", "EXPIRING"]),
       expiring: bucket("EXPIRING"),
+      recycling_review: bucket("RECYCLING_REVIEW"),
       marketplace_eligible: bucket("MARKETPLACE_ELIGIBLE"),
-      marketplace: bucket("MARKETPLACE"),
+      marketplace: bucket(["MARKETPLACE", "LISTED"]),
       sold: bucket(["SOLD", "REPURCHASED"]),
       suppressed: bucket("SUPPRESSED"),
       not_eligible: bucket("NOT_ELIGIBLE_FOR_RESALE"),
@@ -561,12 +539,41 @@ export class MarketplacePurchaseService {
     });
     lead.inventory_status = "ACTIVE_OWNERSHIP";
     lead.purchase_history = [...(lead.purchase_history ?? []), purchase];
+    lead.recycled = true;
+    lead.reengagement_plan = {
+      suggested_actions: [
+        "Call",
+        "Personal Email",
+        "Consent-aware SMS",
+        "Updated Assessment",
+        "Schedule Conversation",
+      ],
+      created_at: assignedAt,
+      note: "Recommendations only — do not auto-contact without consent basis.",
+    };
     store.purchases.push(purchase);
+
+    // Attribute recycled revenue back to original campaign
+    const campaign = store.campaigns.find((c) => c.id === lead.campaign_id);
+    if (campaign) {
+      campaign.analytics.resold_leads = (campaign.analytics.resold_leads ?? 0) + 1;
+      campaign.analytics.recycled_lead_revenue_cents =
+        (campaign.analytics.recycled_lead_revenue_cents ?? 0) + price;
+    }
 
     // Tenant isolation: previous org no longer owner
     lead.assigned_organization_id = input.buyerOrganizationId;
     lead.organization_id = input.buyerOrganizationId;
 
+    appendEvent(lead, "LeadResold", {
+      purchase_id: purchase.id,
+      price_cents: price,
+      buyer_organization_id: input.buyerOrganizationId,
+    });
+    appendEvent(lead, "LeadOwnershipTransferred", {
+      buyer_organization_id: input.buyerOrganizationId,
+      previous_organization_id: sellerOrg,
+    });
     appendEvent(lead, "marketplace_purchased", {
       purchase_id: purchase.id,
       price_cents: price,
@@ -606,3 +613,6 @@ export class MarketplacePurchaseService {
     });
   }
 }
+
+/** Named alias per lifecycle ADR */
+export class LeadMarketplacePurchaseService extends MarketplacePurchaseService {}

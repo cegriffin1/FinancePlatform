@@ -45,6 +45,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, ownership_config: store.ownership_config });
     }
 
+    if (action === "manual_assign") {
+      const parsed = z
+        .object({
+          owner_label: z.string().min(1),
+          organization_id: z.string().optional(),
+          reason: z.string().optional(),
+        })
+        .parse(body);
+      const orgId =
+        parsed.organization_id ??
+        lead!.assigned_organization_id ??
+        lead!.organization_id ??
+        store.organizations[0]!.id;
+      const { LeadOwnershipService } = await import(
+        "@/application/crm/RetirementCrmService"
+      );
+      new LeadOwnershipService().assign(lead!, {
+        organizationId: orgId,
+        ownerLabel: parsed.owner_label,
+        source: "manual_assign",
+      });
+      lead!.assignment_reason =
+        parsed.reason ?? "Manual assignment by admin";
+      lead!.routing_attention = null;
+      lead!.distribution_status = "assigned";
+      lead!.status = "qualified";
+      lead!.assigned_agent_label = parsed.owner_label;
+      const { SpeedToLeadService } = await import(
+        "@/application/crm/SpeedToLeadService"
+      );
+      new SpeedToLeadService().markAssigned(lead!);
+      return NextResponse.json({ ok: true, lead });
+    }
+
     if (action === "set_stage") {
       const parsed = z
         .object({ stage: z.enum(PIPELINE_STAGES) })

@@ -14,6 +14,11 @@ export const APP_NAV = [
   { href: "/app/reports", label: "Reports", permission: "reports.view_own" },
   { href: "/marketplace", label: "Marketplace", permission: "leads.view_team" },
   {
+    href: "/admin/lead-lifecycle",
+    label: "Lead Lifecycle",
+    permission: null,
+  },
+  {
     href: "/admin/lead-inventory",
     label: "Lead Inventory",
     permission: null,

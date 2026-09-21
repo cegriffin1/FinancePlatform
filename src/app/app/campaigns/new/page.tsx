@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { VerticalCampaignWizard } from "@/components/campaigns/VerticalCampaignWizard";
+import { LaunchCampaignWizard } from "@/components/campaigns/LaunchCampaignWizard";
 
 type SearchParams = Promise<{ owner?: string }>;
 
@@ -22,17 +22,15 @@ export default async function NewCampaignPage({
             Create campaign
           </h1>
           <p className="mt-2 text-sm text-[var(--altus-text-secondary)]">
-            Guided setup for audience, strategy, territory, channels, and lead experience.
+            Guided launch — goal, channels, audience, creative, budget, and
+            prospect experience.
           </p>
         </div>
         <Link href="/app/campaigns" className="text-sm font-semibold text-[var(--altus-blue)]">
           ← Campaigns
         </Link>
       </div>
-      <VerticalCampaignWizard
-        ownerType={ownerType}
-        eligibleTerritories={["FL", "TX", "CA", "GA", "NY"]}
-      />
+      <LaunchCampaignWizard ownerType={ownerType} />
     </div>
   );
 }

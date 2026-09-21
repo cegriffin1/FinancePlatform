@@ -154,7 +154,7 @@ export function AltusRecommendations() {
             return (
               <a
                 key={card.title}
-                href={card.filled ? "#assessment" : "#resources"}
+                href={card.filled ? "#retirement-assessment" : "#resources"}
                 className={
                   card.filled
                     ? "rounded-[10px] bg-[var(--altus-blue)] p-5 text-white shadow-[var(--altus-shadow)] transition hover:bg-[var(--altus-blue-deep)]"

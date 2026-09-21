@@ -13,12 +13,12 @@ export function AltusFinalCta() {
           Ready to take the next step?
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-[14px] leading-relaxed text-[var(--altus-text-secondary)]">
-          When you&apos;re ready, ALTUS can help you assess your business,
-          explore potential strategies, and connect with the right professional.
+          Return to the Retirement Assessment above — or continue exploring
+          strategies and resources across ALTUS.
         </p>
         <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
-            href="#assessment"
+            href="#retirement-assessment"
             className="inline-flex min-w-[10.5rem] items-center justify-center rounded-md bg-[var(--altus-blue)] px-5 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[var(--altus-blue-deep)]"
           >
             Start Assessment

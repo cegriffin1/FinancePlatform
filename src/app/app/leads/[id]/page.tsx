@@ -8,6 +8,23 @@ import { actionLabel } from "@/application/intelligence/lifecycle";
 import { PIPELINE_STAGES, type PipelineStage } from "@/domain/types/lead-intelligence";
 import { AGENT_CRM_OUTCOMES } from "@/domain/types/retirement-crm";
 import { buildPreCallBrief } from "@/application/crm/preCallBrief";
+import {
+  NextBestActionService,
+  SpeedToLeadService,
+} from "@/application/crm/SpeedToLeadService";
+
+const FOLLOW_UP_RESULTS = [
+  "Call Attempt",
+  "Text",
+  "Email",
+  "Left Voicemail",
+  "Connected",
+  "No Answer",
+  "Wrong Number",
+  "Not Interested",
+  "Call Back Later",
+  "Appointment Scheduled",
+] as const;
 
 export default function LeadDetailPage({
   params,
@@ -21,6 +38,10 @@ export default function LeadDetailPage({
   const [note, setNote] = useState("");
   const [callbackAt, setCallbackAt] = useState("");
   const [busy, setBusy] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followResult, setFollowResult] = useState<string>("Connected");
+  const [followNote, setFollowNote] = useState("");
+  const [assessmentOpen, setAssessmentOpen] = useState(false);
 
   async function load() {
     const { id } = await params;
@@ -71,18 +92,36 @@ export default function LeadDetailPage({
   const q = lead.qualification;
   const intel = lead.intelligence;
   const brief = buildPreCallBrief(lead);
+  const nba = new NextBestActionService().recommend(lead);
+  const speedLabel = new SpeedToLeadService().formatCountdown(lead);
+  const temp =
+    lead.operational_temperature ??
+    q?.temperature.temperature ??
+    lead.temperature_key;
+  const score =
+    q?.opportunity.opportunity_score ??
+    lead.aging?.original_score ??
+    lead.score;
 
   return (
     <div className="space-y-5 pb-24 sm:pb-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href="/app" className="text-sm font-semibold text-[var(--altus-blue)]">
-            ← Agent Home
+          <Link href="/app/leads" className="text-sm font-semibold text-[var(--altus-blue)]">
+            ← Lead Command Center
           </Link>
           <div className="mt-2 flex flex-wrap gap-2">
-            <Badge>{q?.temperature.temperature ?? lead.temperature_key}</Badge>
-            <Badge>{lead.pipeline_stage ?? "NEW"}</Badge>
-            {q?.asset.commercial_tier ? <Badge>{q.asset.commercial_tier}</Badge> : null}
+            <Badge>{temp}</Badge>
+            <Badge>{score} Opportunity Score</Badge>
+            <Badge>
+              {q?.asset.repositionable_asset_band ??
+                lead.assessment_answers.repositionable_assets ??
+                "Assets —"}
+            </Badge>
+            <Badge>
+              {lead.assessment_answers.decision_timeline ?? "Timeline —"}
+            </Badge>
+            {lead.recycled ? <Badge>RECYCLED LEAD</Badge> : null}
           </div>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">
             {lead.first_name} {lead.last_name}
@@ -90,17 +129,9 @@ export default function LeadDetailPage({
           <p className="text-sm text-[var(--altus-text-secondary)]">
             {lead.state} · {lead.phone} · {lead.email}
           </p>
-        </div>
-        <div className="text-right">
-          <div className="text-3xl font-bold text-[var(--altus-blue)]">
-            {q?.opportunity.opportunity_score ?? lead.score}
-          </div>
-          <div className="text-[10px] font-semibold uppercase text-[var(--altus-text-secondary)]">
-            Opportunity Score
-          </div>
-          <div className="mt-1 text-sm font-semibold">
-            {q?.temperature.temperature_score ?? "—"}°
-          </div>
+          <p className="mt-1 text-xs font-semibold text-[var(--altus-text-secondary)]">
+            {speedLabel}
+          </p>
         </div>
       </div>
 
@@ -109,37 +140,285 @@ export default function LeadDetailPage({
         <Action
           disabled={busy}
           href={`tel:${lead.phone}`}
-          onClick={() => void crm("contact_attempt", { channel: "call" })}
+          onClick={() =>
+            void crm("contact_attempt", {
+              channel: "call",
+              result: "Call Attempt",
+            })
+          }
           label="Call"
         />
         <Action
           disabled={busy}
-          href={`mailto:${lead.email}`}
-          onClick={() => void crm("contact_attempt", { channel: "email" })}
-          label="Email"
+          href={`sms:${lead.phone}`}
+          onClick={() =>
+            void crm("contact_attempt", { channel: "sms", result: "Text" })
+          }
+          label="Text"
         />
         <Action
           disabled={busy}
-          href={`sms:${lead.phone}`}
-          onClick={() => void crm("contact_attempt", { channel: "sms" })}
-          label="Text"
+          href={`mailto:${lead.email}`}
+          onClick={() =>
+            void crm("contact_attempt", { channel: "email", result: "Email" })
+          }
+          label="Email"
         />
         <button
           type="button"
           disabled={busy}
           className="shrink-0 rounded-md border border-[var(--altus-border)] bg-white px-3 py-2 text-xs font-semibold"
+          onClick={() => setFollowUpOpen(true)}
+        >
+          Schedule
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          className="shrink-0 rounded-md border border-[var(--altus-border)] bg-white px-3 py-2 text-xs font-semibold"
           onClick={() => {
-            const due = callbackAt || new Date(Date.now() + 3600000).toISOString();
-            void crm("create_follow_up", {
-              type: "Callback",
-              title: `Callback ${lead.first_name}`,
-              due_at: due,
-            });
+            const body = window.prompt("Add note");
+            if (body) void crm("add_note", { body });
           }}
         >
-          Set callback
+          Add Note
         </button>
       </div>
+      <p className="text-[11px] text-[var(--altus-text-secondary)]">
+        Call / Text / Email open your device apps. ALTUS records the attempt —
+        messages are not auto-sent without a connected provider.
+      </p>
+
+      <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-4 shadow-[var(--altus-shadow)]">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--altus-text-secondary)]">
+          Next best action
+        </p>
+        <p className="mt-2 text-xl font-bold text-[var(--altus-text)]">
+          {nba.headline}
+        </p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[var(--altus-text-secondary)]">
+          {nba.reasons.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          className="mt-4 min-h-11 rounded-md bg-[var(--altus-blue)] px-4 py-2 text-sm font-semibold text-white"
+          onClick={() => setFollowUpOpen(true)}
+        >
+          Start Follow-Up
+        </button>
+      </section>
+
+      {lead.routing_attention ? (
+        <section className="rounded-[12px] border border-amber-300 bg-amber-50 p-4">
+          <p className="text-[11px] font-bold uppercase text-amber-900">
+            Routing attention required
+          </p>
+          <p className="mt-1 text-sm text-amber-950">{lead.routing_attention}</p>
+          <p className="mt-2 text-xs">
+            Assign manually via CRM ownership or setter handoff.
+          </p>
+        </section>
+      ) : null}
+
+      {followUpOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Follow-up panel"
+        >
+          <div className="w-full max-w-md rounded-t-[16px] bg-white p-5 shadow-xl sm:rounded-[16px]">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold">Quick follow-up</h2>
+              <button
+                type="button"
+                className="min-h-11 px-2 text-sm font-semibold"
+                onClick={() => setFollowUpOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <label className="mt-3 block text-sm font-semibold">
+              Disposition
+              <select
+                className="mt-1 min-h-11 w-full rounded border px-2"
+                value={followResult}
+                onChange={(e) => setFollowResult(e.target.value)}
+              >
+                {FOLLOW_UP_RESULTS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="mt-3 block text-sm font-semibold">
+              Note
+              <textarea
+                className="mt-1 w-full rounded border px-2 py-2 text-sm"
+                rows={3}
+                value={followNote}
+                onChange={(e) => setFollowNote(e.target.value)}
+              />
+            </label>
+            <label className="mt-3 block text-sm font-semibold">
+              Next follow-up
+              <input
+                type="datetime-local"
+                className="mt-1 min-h-11 w-full rounded border px-2"
+                value={callbackAt}
+                onChange={(e) => setCallbackAt(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busy}
+              className="mt-4 min-h-11 w-full rounded-md bg-[var(--altus-blue)] text-sm font-semibold text-white"
+              onClick={async () => {
+                const channel =
+                  followResult === "Email"
+                    ? "email"
+                    : followResult === "Text"
+                      ? "sms"
+                      : "call";
+                await crm("contact_attempt", {
+                  channel,
+                  result: followResult,
+                });
+                if (followNote) await crm("add_note", { body: followNote });
+                if (callbackAt) {
+                  await crm("create_follow_up", {
+                    type: "Callback",
+                    title: `Follow-up ${lead.first_name}`,
+                    due_at: new Date(callbackAt).toISOString(),
+                    body: followNote || null,
+                  });
+                }
+                setFollowUpOpen(false);
+                setFollowNote("");
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {(() => {
+        const days = lead.days_since_meaningful_interaction ??
+          Math.floor(
+            (Date.now() -
+              new Date(
+                lead.last_meaningful_interaction_at ?? lead.created_at,
+              ).getTime()) /
+              (24 * 60 * 60 * 1000),
+          );
+        const recycleAfter = 45;
+        const remaining = Math.max(0, recycleAfter - days);
+        const atRisk =
+          (lead.operational_temperature === "COLD" || days >= 30) &&
+          !lead.recycled &&
+          lead.inventory_status !== "MARKETPLACE";
+        if (!atRisk) return null;
+        return (
+          <section className="rounded-[12px] border border-amber-300 bg-amber-50 p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-900">
+              Lead at risk of recycling
+            </p>
+            <p className="mt-2 text-sm text-amber-950">
+              No prospect interaction for {days} days. {remaining} days remaining
+              before this lead becomes eligible for release.
+            </p>
+            <p className="mt-1 text-xs text-amber-800">
+              Opening this record does not reset the inactivity clock — only
+              meaningful prospect interaction does.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                href={`tel:${lead.phone}`}
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-950"
+              >
+                Contact Lead
+              </a>
+              <button
+                type="button"
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-950"
+                onClick={() =>
+                  void crm("create_follow_up", {
+                    type: "Callback",
+                    title: `Follow-up ${lead.first_name}`,
+                    due_at: new Date(Date.now() + 3600000).toISOString(),
+                  })
+                }
+              >
+                Schedule Follow-Up
+              </button>
+              <a
+                href="#temperature-history"
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-950"
+              >
+                View History
+              </a>
+            </div>
+          </section>
+        );
+      })()}
+
+      {lead.recycled ? (
+        <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--altus-text-secondary)]">
+            Recycled lead
+          </p>
+          <p className="mt-1 text-sm text-[var(--altus-text)]">
+            This is not a fresh lead. Original Opportunity Score{" "}
+            {lead.aging?.original_score ?? lead.score} is preserved. Current
+            temperature: {lead.operational_temperature ?? lead.temperature_key}.
+          </p>
+          {lead.reengagement_plan ? (
+            <div className="mt-3">
+              <p className="text-xs font-semibold uppercase text-[var(--altus-text-secondary)]">
+                Re-engagement plan (recommendations only)
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-sm">
+                {lead.reengagement_plan.suggested_actions.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-[var(--altus-text-secondary)]">
+                {lead.reengagement_plan.note}
+              </p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {(lead.temperature_snapshots?.length ?? 0) > 0 ? (
+        <section
+          id="temperature-history"
+          className="rounded-[12px] border border-[var(--altus-border)] bg-white p-4"
+        >
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--altus-text-secondary)]">
+            Temperature history
+          </p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {[...(lead.temperature_snapshots ?? [])]
+              .slice()
+              .reverse()
+              .map((s) => (
+                <li key={s.id} className="border-b border-[var(--altus-border)] pb-2">
+                  <span className="font-semibold">{s.temperature}</span>
+                  {" · "}
+                  {new Date(s.calculated_at).toLocaleDateString()}
+                  <div className="text-xs text-[var(--altus-text-secondary)]">
+                    {s.reason} ({s.trigger})
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="rounded-[12px] border border-[var(--altus-border)] bg-[linear-gradient(145deg,#004C91,#0074C8)] p-4 text-white">
         <p className="text-[11px] font-semibold tracking-[0.14em] text-white/80">
@@ -148,11 +427,86 @@ export default function LeadDetailPage({
         <pre className="mt-2 whitespace-pre-wrap font-sans text-sm leading-relaxed">{brief}</pre>
       </section>
 
+      <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--altus-text-secondary)]">
+          Retirement opportunity
+        </p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 text-sm">
+          <Row label="Age band" value={lead.assessment_answers.age_range ?? "—"} />
+          <Row label="State" value={lead.state || lead.assessment_answers.state || "—"} />
+          <Row label="Employment" value={lead.assessment_answers.employment ?? "—"} />
+          <Row label="Retirement timeline" value={lead.assessment_answers.retirement_timing ?? "—"} />
+          <Row label="Investable assets" value={lead.assessment_answers.total_retirement_assets ?? "—"} />
+          <Row label="Potentially repositionable" value={lead.assessment_answers.repositionable_assets ?? "—"} />
+          <Row label="Asset locations" value={lead.assessment_answers.asset_location ?? "—"} />
+          <Row label="Existing annuity" value={lead.assessment_answers.existing_annuity ?? "—"} />
+          <Row label="Liquidity timeline" value={lead.assessment_answers.liquidity_timeline ?? "—"} />
+          <Row label="Primary objective" value={lead.assessment_answers.primary_objective ?? "—"} />
+          <Row label="Decision timeline" value={lead.assessment_answers.decision_timeline ?? "—"} />
+        </div>
+        <button
+          type="button"
+          className="mt-3 text-sm font-semibold text-[var(--altus-blue)]"
+          onClick={() => setAssessmentOpen((o) => !o)}
+        >
+          {assessmentOpen ? "Hide" : "View"} full assessment
+        </button>
+        {assessmentOpen ? (
+          <div className="mt-3 space-y-2 border-t border-[var(--altus-border)] pt-3 text-sm">
+            {Object.entries(lead.assessment_answers).map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-2">
+                <span className="text-[var(--altus-text-secondary)]">{k}</span>
+                <span className="font-semibold text-right">{v}</span>
+              </div>
+            ))}
+            <p className="text-xs text-[var(--altus-text-secondary)]">
+              Self-reported unless setter verification status says otherwise.
+            </p>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-[12px] border border-[var(--altus-border)] bg-white p-4">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--altus-text-secondary)]">
+          Acquisition
+        </p>
+        <div className="mt-2 space-y-2 text-sm">
+          <div>
+            Campaign:{" "}
+            <Link
+              href={`/app/campaigns/${lead.campaign_id}`}
+              className="font-semibold text-[var(--altus-blue)]"
+            >
+              {campaignName || lead.campaign_id.slice(0, 8)}
+            </Link>
+          </div>
+          <div>
+            Channel:{" "}
+            <span className="font-semibold">
+              {lead.attribution.ad_provider ?? lead.attribution.source ?? "—"}
+            </span>
+          </div>
+          <div>
+            Creative:{" "}
+            <span className="font-semibold">
+              {lead.attribution.creative_id ??
+                lead.attribution.utm_content ??
+                "—"}
+            </span>
+          </div>
+          <div>First touch: {lead.attribution.captured_at ?? lead.created_at}</div>
+          <div>Assessment completed: {lead.scored_at ?? lead.created_at}</div>
+          {lead.assignment_reason ? (
+            <div>Assigned because: {lead.assignment_reason}</div>
+          ) : null}
+        </div>
+      </section>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card title="Opportunity">
           <Row label="Score" value={`${q?.opportunity.opportunity_score ?? lead.score}`} />
           <Row label="Grade" value={q?.lead_grade ?? intel?.quality_grade ?? "—"} />
-          <Row label="Temperature" value={`${q?.temperature.temperature ?? lead.temperature_key}`} />
+          <Row label="Temperature" value={`${temp}`} />
           <Row label="Asset tier" value={q?.asset.commercial_tier ?? "—"} />
           <Row label="Assets" value={q?.asset.repositionable_asset_band ?? "—"} />
           <Row

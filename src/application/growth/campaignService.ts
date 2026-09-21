@@ -96,8 +96,15 @@ export function createSimCampaign(input: VerticalCampaignDraft): SimCampaign {
       leads: 0,
       qualified_leads: 0,
       hot_leads: 0,
+      medium_leads: 0,
+      cold_leads: 0,
       priority_leads: 0,
       appointments: 0,
+      recycled_leads: 0,
+      marketplace_eligible: 0,
+      resold_leads: 0,
+      original_lead_revenue_cents: 0,
+      recycled_lead_revenue_cents: 0,
     },
   };
 
@@ -187,4 +194,60 @@ export function listAllCampaigns() {
 
 export function getCampaignPublicPath(campaign: SimCampaign) {
   return `/c/${campaign.organization_slug}/${campaign.slug}`;
+}
+
+/** Stable direct-entry campaign for homepage → /assessment/retirement */
+export const DIRECT_RETIREMENT_ORG_SLUG = "altus";
+export const DIRECT_RETIREMENT_CAMPAIGN_SLUG = "retirement-opportunity";
+
+export function ensureDirectRetirementCampaign(): SimCampaign {
+  const store = getSimStore();
+  const existing = store.campaigns.find(
+    (c) =>
+      c.organization_slug === DIRECT_RETIREMENT_ORG_SLUG &&
+      c.slug === DIRECT_RETIREMENT_CAMPAIGN_SLUG,
+  );
+  if (existing) {
+    if (!["active", "active_simulation", "published"].includes(String(existing.status))) {
+      existing.status = "active_simulation";
+      existing.launched_at = existing.launched_at ?? new Date().toISOString();
+    }
+    existing.qualification_template_key = "retirement-opportunity-v1";
+    existing.assessment_template_key = "retirement-opportunity-v1";
+    existing.strategy = "Retirement";
+    return existing;
+  }
+
+  const org = findOrgBySlug(DIRECT_RETIREMENT_ORG_SLUG);
+  const campaign = createSimCampaign({
+    owner_type: "ALTUS_PLATFORM_CAMPAIGN",
+    owner_id: org?.id ?? "20000000-0000-4000-8000-000000000001",
+    organization_id: org?.id ?? "20000000-0000-4000-8000-000000000001",
+    organization_slug: DIRECT_RETIREMENT_ORG_SLUG,
+    name: "Retirement Opportunity Assessment",
+    description: "Direct homepage entry to the Retirement Opportunity Assessment",
+    goal: "generate_leads",
+    strategy: "Retirement",
+    audience: {},
+    territories: ["US"],
+    channels: ["email"],
+    destination: "interactive_assessment",
+    budget_cents: null,
+    template_id: null,
+    branding: {
+      organization_name: "ALTUS",
+      custom_cta: "Start Assessment",
+      thank_you_message:
+        "Thanks — your retirement profile is ready. An ALTUS specialist can follow up when you choose.",
+    },
+    qualification_template_key: "retirement-opportunity-v1",
+    assessment_template_key: "retirement-opportunity-v1",
+    distribution_config: { method: "priority_tier", preferPremierForPriority: true },
+    landing_headline: "Build Your Retirement Profile",
+    landing_support:
+      "Answer a few questions about your retirement, financial priorities and goals.",
+  });
+  // Force stable slug for the direct assessment entry
+  campaign.slug = DIRECT_RETIREMENT_CAMPAIGN_SLUG;
+  return launchSimCampaign(campaign.id);
 }

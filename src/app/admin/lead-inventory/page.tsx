@@ -8,10 +8,15 @@ import type { LeadPricingConfig } from "@/domain/types/lead-inventory";
 type Buckets = Record<string, SimLead[]>;
 
 const LABELS: Record<string, string> = {
-  active: "Active inventory",
+  active: "Active leads",
+  hot: "Hot",
+  medium: "Medium",
+  cold: "Cold",
+  recycling_soon: "Recycling soon",
   expiring: "Expiring",
+  recycling_review: "Recycling review",
   marketplace_eligible: "Marketplace eligible",
-  marketplace: "Marketplace",
+  marketplace: "Listed",
   sold: "Sold",
   suppressed: "Suppressed",
   not_eligible: "Not eligible for resale",
@@ -85,6 +90,9 @@ export default function LeadInventoryAdminPage() {
         </div>
         <Link href="/marketplace" className="text-sm font-semibold text-[var(--altus-blue)]">
           Open marketplace →
+        </Link>
+        <Link href="/admin/lead-lifecycle" className="text-sm font-semibold text-[var(--altus-blue)]">
+          Lifecycle settings →
         </Link>
       </div>
 

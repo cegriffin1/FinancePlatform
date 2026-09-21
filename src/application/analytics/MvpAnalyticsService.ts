@@ -1,5 +1,6 @@
 import type { SimCampaign, SimLead } from "@/application/growth/simulationStore";
 import { getSimStore } from "@/application/growth/simulationStore";
+import { AssessmentSessionService } from "@/application/growth/AssessmentSessionService";
 
 function safeDiv(num: number, den: number) {
   if (!den || den <= 0) return null;
@@ -190,9 +191,39 @@ export class MvpAnalyticsService {
 
   fromStore() {
     const store = getSimStore();
+    const funnel = new AssessmentSessionService().funnelCounts();
+    const qualified_250k = store.leads.filter(
+      (l) => (l.qualification?.asset.repositionable_min_cents ?? 0) >= 25_000_000,
+    ).length;
     return {
       executive: this.buildExecutive(store.leads, store.campaigns),
       channels: this.compareChannels(store.leads, store.campaigns),
+      assessment_funnel: {
+        campaign_clicks:
+          funnel.campaign_clicks ||
+          store.campaigns.reduce((s, c) => s + c.analytics.views, 0),
+        assessment_starts: funnel.assessment_starts,
+        about_you_completed: funnel.about_you_completed,
+        your_money_completed: funnel.your_money_completed,
+        asset_250k_identified: qualified_250k,
+        goal_completed: funnel.goal_completed,
+        priorities_completed: funnel.priorities_completed,
+        contact_captured: funnel.contact_captured,
+        qualified_lead: store.leads.filter(
+          (l) =>
+            l.score >= 60 ||
+            (l.qualification?.asset.repositionable_min_cents ?? 0) >= 25_000_000,
+        ).length,
+        setter_verified: store.leads.filter(
+          (l) =>
+            l.qualification?.asset.verification_status === "SETTER_CONFIRMED",
+        ).length,
+        appointments: store.leads.filter((l) => (l.appointments?.length ?? 0) > 0)
+          .length,
+        opportunities: store.leads.filter(
+          (l) => l.pipeline_stage === "OPPORTUNITY" || l.outcome === "Won",
+        ).length,
+      },
     };
   }
 }

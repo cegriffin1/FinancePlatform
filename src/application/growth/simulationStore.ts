@@ -47,6 +47,18 @@ import {
   DEFAULT_INVENTORY_CONFIG,
   DEFAULT_PRICING_CONFIG,
 } from "@/domain/types/lead-inventory";
+import type {
+  LeadEngagementEvent,
+  LeadTemperatureSnapshot,
+  LifecycleConfig,
+  OperationalTemperature,
+} from "@/domain/types/lead-lifecycle";
+import { DEFAULT_LIFECYCLE_CONFIG } from "@/domain/types/lead-lifecycle";
+import type {
+  SpeedToLeadConfig,
+  SpeedToLeadSnapshot,
+} from "@/application/crm/SpeedToLeadService";
+import { DEFAULT_SPEED_TO_LEAD_CONFIG } from "@/application/crm/SpeedToLeadService";
 
 export type QualificationSnapshotRecord = {
   id: UUID;
@@ -87,8 +99,15 @@ export type SimCampaign = Omit<GrowthCampaign, "status"> & {
     leads: number;
     qualified_leads: number;
     hot_leads: number;
+    medium_leads?: number;
+    cold_leads?: number;
     priority_leads: number;
     appointments: number;
+    recycled_leads?: number;
+    marketplace_eligible?: number;
+    resold_leads?: number;
+    original_lead_revenue_cents?: number;
+    recycled_lead_revenue_cents?: number;
     outcome_counts?: Record<string, number>;
     won?: number;
     lost?: number;
@@ -191,6 +210,29 @@ export type SimLead = {
   active_reservation_id?: string | null;
   ownership_extensions?: InventoryExtension[];
   purchase_history?: LeadPurchaseRecord[];
+  /** Operational HOT/MEDIUM/COLD — separate from Opportunity Score */
+  operational_temperature?: OperationalTemperature;
+  temperature_snapshots?: LeadTemperatureSnapshot[];
+  engagement_events?: LeadEngagementEvent[];
+  last_meaningful_interaction_at?: string | null;
+  last_activity_at?: string | null;
+  days_since_meaningful_interaction?: number;
+  recycled?: boolean;
+  reengagement_plan?: {
+    suggested_actions: string[];
+    created_at: string;
+    note: string;
+  } | null;
+  pricing_snapshots?: Array<{
+    pricing_version: string;
+    base_price: number;
+    adjustments: Record<string, number>;
+    final_price: number;
+    calculated_at: string;
+  }>;
+  speed_to_lead?: SpeedToLeadSnapshot;
+  assignment_reason?: string | null;
+  routing_attention?: string | null;
 };
 
 export type CrmSyncLogEntry = {
@@ -217,6 +259,55 @@ export type SimNotification = {
   metadata?: Record<string, unknown>;
 };
 
+export type AssessmentSession = {
+  id: UUID;
+  campaign_id: UUID;
+  organization_id: UUID;
+  organization_slug: string;
+  campaign_slug: string;
+  assessment_definition_id: string;
+  assessment_version: string;
+  attribution: {
+    provider: string | null;
+    utm_source: string | null;
+    utm_medium: string | null;
+    utm_campaign: string | null;
+    utm_content: string | null;
+    utm_term: string | null;
+    external_campaign_id: string | null;
+    external_ad_set_id: string | null;
+    external_ad_id: string | null;
+    external_creative_id: string | null;
+    referrer: string | null;
+    source_channel: string | null;
+    landing_page: string | null;
+    first_touch_at: string;
+  };
+  answers: Record<string, string>;
+  last_completed_question: string | null;
+  last_completed_stage: string | null;
+  completion_percentage: number;
+  branch: string | null;
+  status: "active" | "completed" | "abandoned";
+  /** Incomplete sessions are never contactable leads */
+  contactable: boolean;
+  lead_id: UUID | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  abandoned_at: string | null;
+};
+
+export type AssessmentFunnelEvent = {
+  id: UUID;
+  session_id: UUID;
+  campaign_id: UUID | null;
+  organization_id: UUID | null;
+  type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
 export type SimStore = {
   organizations: SimOrganization[];
   campaigns: SimCampaign[];
@@ -230,10 +321,18 @@ export type SimStore = {
   ownership_config: OwnershipConfig;
   inventory_config: InventoryConfig;
   pricing_config: LeadPricingConfig;
+  lifecycle_config: LifecycleConfig;
+  speed_to_lead_config: SpeedToLeadConfig;
+  notification_preferences: Record<
+    string,
+    { recycling_warnings: boolean; temperature_changes: boolean; marketplace: boolean }
+  >;
   reservations: LeadReservation[];
   purchases: LeadPurchaseRecord[];
   ownership_extensions: InventoryExtension[];
   crm_sync_log: CrmSyncLogEntry[];
+  assessment_sessions: AssessmentSession[];
+  assessment_funnel_events: AssessmentFunnelEvent[];
   roundRobinCursor: Record<string, number>;
 };
 
@@ -386,10 +485,15 @@ function seed(): SimStore {
       temperature_multipliers: { ...DEFAULT_PRICING_CONFIG.temperature_multipliers },
       territory_multipliers: { ...DEFAULT_PRICING_CONFIG.territory_multipliers },
     },
+    lifecycle_config: { ...DEFAULT_LIFECYCLE_CONFIG },
+    speed_to_lead_config: { ...DEFAULT_SPEED_TO_LEAD_CONFIG },
+    notification_preferences: {},
     reservations: [],
     purchases: [],
     ownership_extensions: [],
     crm_sync_log: [],
+    assessment_sessions: [],
+    assessment_funnel_events: [],
     roundRobinCursor: {},
   };
 }

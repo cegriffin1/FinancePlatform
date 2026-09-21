@@ -36,9 +36,24 @@ export function AltusHero() {
             business.
           </p>
 
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href="#retirement-assessment"
+              className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-5 py-2.5 text-[13px] font-semibold text-[var(--altus-blue)] transition hover:bg-white/95"
+            >
+              Start Assessment
+            </a>
+            <a
+              href="#growth-hub"
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-white/50 bg-white/10 px-5 py-2.5 text-[13px] font-semibold text-white transition hover:bg-white/20"
+            >
+              Explore Growth Hub
+            </a>
+          </div>
+
           <form
             onSubmit={onSearch}
-            className="mt-6 flex max-w-xl overflow-hidden rounded-full bg-white p-1 shadow-[0_8px_24px_rgba(3,38,61,0.18)]"
+            className="mt-5 flex max-w-xl overflow-hidden rounded-full bg-white p-1 shadow-[0_8px_24px_rgba(3,38,61,0.18)]"
           >
             <input
               value={query}

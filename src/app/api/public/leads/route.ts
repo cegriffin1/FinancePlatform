@@ -11,7 +11,7 @@ const bodySchema = z.object({
   contact: z.object({
     firstName: z.string().min(1),
     lastName: z.string().min(1),
-    businessName: z.string().min(1),
+    businessName: z.string().optional().default(""),
     email: z.string().email(),
     phone: z.string().min(7),
     state: z.string().min(2).max(2),
@@ -21,15 +21,22 @@ const bodySchema = z.object({
   appointmentRequested: z.boolean().default(false),
   honeypot: z.string().optional().nullable(),
   submissionStartedAt: z.string().optional().nullable(),
+  sessionId: z.string().uuid().optional().nullable(),
   attribution: z
     .object({
       utm_source: z.string().nullable().optional(),
       utm_medium: z.string().nullable().optional(),
       utm_campaign: z.string().nullable().optional(),
       utm_content: z.string().nullable().optional(),
+      utm_term: z.string().nullable().optional(),
       referrer: z.string().nullable().optional(),
       source_channel: z.string().nullable().optional(),
       landing_page: z.string().nullable().optional(),
+      ad_provider: z.string().nullable().optional(),
+      external_campaign_id: z.string().nullable().optional(),
+      external_ad_set_id: z.string().nullable().optional(),
+      external_ad_id: z.string().nullable().optional(),
+      external_creative_id: z.string().nullable().optional(),
     })
     .default({}),
 });
@@ -43,18 +50,23 @@ export async function POST(request: Request) {
 
     const json = await request.json();
     const parsed = bodySchema.parse(json);
-    const result = await processPublicLeadSubmission(parsed);
+    const result = await processPublicLeadSubmission({
+      ...parsed,
+      contact: {
+        ...parsed.contact,
+        businessName:
+          parsed.contact.businessName ||
+          `${parsed.contact.firstName} ${parsed.contact.lastName}`.trim(),
+      },
+    });
     return NextResponse.json({
       ok: true,
       duplicate: result.duplicate,
       leadId: result.lead.id,
-      score: result.lead.score,
-      temperature: result.lead.temperature_key,
-      grade: result.lead.intelligence?.quality_grade ?? null,
-      strategies: result.lead.classifications.map((c) => c.strategy_category),
+      // Consumer-safe profile only — no score/grade/tier/temperature
+      consumerProfile: result.consumerProfile,
       assignedOrganizationId: result.lead.assigned_organization_id,
       distributionStatus: result.lead.distribution_status,
-      recommendedAction: result.lead.intelligence?.recommended_action ?? null,
       poolSize: getSimStore().leads.length,
     });
   } catch (error) {
