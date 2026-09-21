@@ -1,20 +1,25 @@
 # Campaign Funnel
 
-## Path
+## Canonical path
 
-Ad → Landing (`/c/...`) → Assessment → Contact/Consent → Score → Distribute/Assign → Setter (when retirement-qualified) → CRM → Outcome
+**Ad click → Interactive Assessment (immediately) → Data capture → Contact → Score → Setter → CRM**
+
+There is **no** separate marketing landing page, long sales page, or CRM form wall between the ad and the assessment.
+
+Public route `/c/[organizationSlug]/[campaignSlug]` loads the assessment experience directly and creates an `AssessmentSession` with attribution on entry.
+
+## Stages
+
+ABOUT YOU → YOUR MONEY → YOUR GOAL → dynamic branch → YOUR PRIORITIES → YOUR PLAN → CONTACT → consumer result
 
 ## Attribution
 
-Captured at submission (UTM, channel, provider, landing page). Attribution objects are frozen after create.
+Captured at session create (not deferred until Q24): campaign_id, UTMs, provider, external ad ids, referrer, first_touch_at.
 
-## Executive metrics
+## Analytics funnel
 
-- Ad Spend / Clicks (null when unavailable — **never fabricated**)
-- Assessment Starts, Completed Profiles
-- Qualified $250K+, Setter Verified, Appointments, Opportunities, Won, Lost
-- Cost Per Assessment / Qualified Opportunity / Verified Opportunity / Appointment
+Campaign clicks → Assessment starts → About You → Your Money → $250K+ identified → Goal → Priorities → Contact → Qualified → Setter verified → Appointment → Opportunity
 
-## Channel comparison
+Primary KPI remains **Cost Per Qualified Opportunity**.
 
-Meta, Instagram, Google, LinkedIn compared on completion quality and **Cost Per Qualified Opportunity** (primary KPI).
+Incomplete sessions are **not** contactable leads.

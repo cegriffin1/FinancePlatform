@@ -150,7 +150,7 @@ describe("marketplace transition & consent", () => {
     inventory.listOnMarketplace(lead);
     expect(lead.inventory_status).toBe("MARKETPLACE");
     const preview = inventory.toPreview(lead);
-    expect(preview.title).toBe("ANNUITY OPPORTUNITY");
+    expect(preview.title).toBe("RECYCLED RETIREMENT OPPORTUNITY");
     expect(preview.state).toBe("FL");
     expect(JSON.stringify(preview)).not.toMatch(/Blake|jordan\.blake|3055550166/i);
     expect(preview.price_cents).toBeGreaterThan(0);
@@ -222,23 +222,23 @@ describe("purchase, race condition, tenant isolation", () => {
 });
 
 describe("aging preserves originals", () => {
-  it("decays current score/temperature without rewriting originals", async () => {
+  it("cools temperature without rewriting opportunity score", async () => {
     const lead = await seedOwnedLead();
     const aging = new LeadAgingService();
     const snap = aging.ensureSnapshot(lead);
     const originalScore = snap.original_score;
     const originalTemp = snap.original_temperature;
 
-    // Simulate old ownership start
-    lead.ownership!.ownership_started_at = new Date(
+    lead.last_meaningful_interaction_at = new Date(
       Date.now() - 50 * 24 * 60 * 60 * 1000,
     ).toISOString();
     aging.applyDecay(lead);
 
     expect(lead.aging!.original_score).toBe(originalScore);
     expect(lead.aging!.original_temperature).toBe(originalTemp);
-    expect(lead.aging!.current_score).toBeLessThanOrEqual(originalScore);
-    expect(lead.aging!.current_temperature).not.toBe("READY_NOW");
+    expect(lead.aging!.current_score).toBe(originalScore);
+    expect(lead.score).toBe(originalScore);
+    expect(lead.operational_temperature).toBe("COLD");
   });
 });
 
