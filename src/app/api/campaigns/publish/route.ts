@@ -6,10 +6,14 @@ import { getIntegrationStore } from "@/application/integrations/integrationStore
 import { getSimStore } from "@/application/growth/simulationStore";
 import { runQueuedIntegrationJobs } from "@/application/integrations/registerJobs";
 import type { ChannelProviderConfig } from "@/domain/types/social-integrations";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 const DEMO_ORG = "20000000-0000-4000-8000-000000000003";
 
 export async function POST(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     const action = body.action as string;

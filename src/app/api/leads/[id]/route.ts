@@ -4,6 +4,7 @@ import { getSimStore } from "@/application/growth/simulationStore";
 import { LeadSlaService } from "@/application/intelligence/lifecycle";
 import type { LeadOutcome, PipelineStage } from "@/domain/types/lead-intelligence";
 import { randomUUID } from "crypto";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 type Params = Promise<{ id: string }>;
 
@@ -11,6 +12,9 @@ export async function GET(
   _request: Request,
   context: { params: Params },
 ) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const { id } = await context.params;
   const store = getSimStore();
   const lead = store.leads.find((l) => l.id === id);
@@ -36,6 +40,9 @@ export async function POST(
   request: Request,
   context: { params: Params },
 ) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const { id } = await context.params;
   const store = getSimStore();
   const lead = store.leads.find((l) => l.id === id);

@@ -20,6 +20,7 @@ import {
   assertPermission,
   AuthorizationError,
 } from "@/application/authorization";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 type Params = Promise<{ id: string }>;
 
@@ -36,6 +37,9 @@ export async function GET(
   request: Request,
   context: { params: Params },
 ) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   try {
     assertPermission(grantedFromRequest(request), "setter.leads.view");
   } catch (e) {
@@ -92,6 +96,9 @@ export async function POST(
   request: Request,
   context: { params: Params },
 ) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const granted = grantedFromRequest(request);
   const { id } = await context.params;
   const store = getSimStore();

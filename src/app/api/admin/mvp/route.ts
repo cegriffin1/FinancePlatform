@@ -11,6 +11,7 @@ import {
   assertPermission,
   AuthorizationError,
 } from "@/application/authorization";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 /** Dev/sim auth: admin ops require reports.view_all (owner/admin). */
 function grantedFromRequest(request: Request): PermissionKey[] {
@@ -28,6 +29,9 @@ function authorizeAdmin(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   try {
     authorizeAdmin(request);
   } catch (e) {
@@ -84,6 +88,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   try {
     authorizeAdmin(request);
   } catch (e) {

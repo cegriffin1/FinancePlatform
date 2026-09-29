@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSimStore } from "@/application/growth/simulationStore";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 export async function GET() {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const store = getSimStore();
   return NextResponse.json({
     campaigns: store.campaigns,

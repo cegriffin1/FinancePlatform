@@ -7,8 +7,12 @@ import {
   duplicateCampaign,
 } from "@/application/growth/campaignService";
 import type { CampaignOwnerType } from "@/domain/types/campaign-engine";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 export async function POST(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     const action = body.action as string;

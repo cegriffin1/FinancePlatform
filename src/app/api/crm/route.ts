@@ -9,8 +9,12 @@ import {
   AGENT_CRM_OUTCOMES,
   CRM_FOLLOW_UP_TYPES,
 } from "@/domain/types/retirement-crm";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 export async function GET() {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const store = getSimStore();
   const crm = new RetirementCrmService();
   const home = crm.buildAgentHome(store.leads, "Advisor");
@@ -25,6 +29,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const store = getSimStore();
   const body = await request.json();
   const action = body.action as string;

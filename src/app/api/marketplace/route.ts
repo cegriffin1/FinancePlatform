@@ -15,6 +15,7 @@ import {
   assertPermission,
   AuthorizationError,
 } from "@/application/authorization";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 function grantedFromRequest(request: Request): PermissionKey[] {
   const role = request.headers.get("x-altus-role") ?? "admin";
@@ -26,6 +27,9 @@ function grantedFromRequest(request: Request): PermissionKey[] {
 }
 
 export async function GET(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const store = getSimStore();
   const inventory = new LeadInventoryService();
   const url = new URL(request.url);
@@ -96,6 +100,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   const store = getSimStore();
   const body = await request.json();
   const action = body.action as string;

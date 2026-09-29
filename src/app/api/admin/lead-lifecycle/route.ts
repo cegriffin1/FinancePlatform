@@ -13,12 +13,16 @@ import {
 } from "@/application/lifecycle/LeadLifecycleService";
 import { LeadInventoryService } from "@/application/inventory/LeadInventoryService";
 import { CampaignHealthService } from "@/application/analytics/CampaignHealthService";
+import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 function requireAdmin(request: Request) {
   return request.headers.get("x-altus-role") === "admin";
 }
 
 export async function GET(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   if (!requireAdmin(request)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -56,6 +60,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await enforceInternalApiAccess();
+  if (denied) return denied;
+
   if (!requireAdmin(request)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
