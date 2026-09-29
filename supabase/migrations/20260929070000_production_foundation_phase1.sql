@@ -2,6 +2,10 @@
 -- assessment_sessions, session answers, campaign slug, lead session link
 -- Does not drop or rename existing columns.
 
+-- Supabase installs pgcrypto into the extensions schema (not public).
+-- gen_random_uuid() is also available from pg_catalog; gen_random_bytes is not.
+create extension if not exists pgcrypto with schema extensions;
+
 -- ---------------------------------------------------------------------------
 -- Campaigns: public slug for /c/[org]/[slug]
 -- ---------------------------------------------------------------------------
@@ -35,7 +39,8 @@ create table if not exists public.assessment_sessions (
   completion_percentage integer not null default 0,
   branch text,
   contactable boolean not null default false,
-  resume_token text not null unique default encode(gen_random_bytes(32), 'hex'),
+  resume_token text not null unique
+    default encode(extensions.gen_random_bytes(32), 'hex'),
   attribution jsonb not null default '{}'::jsonb,
   answers jsonb not null default '{}'::jsonb,
   lead_id uuid references public.leads(id) on delete set null,
