@@ -419,6 +419,7 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
     utm_medium: mergedAttribution.utm_medium ?? null,
     utm_campaign: mergedAttribution.utm_campaign ?? null,
     utm_content: mergedAttribution.utm_content ?? null,
+    utm_term: mergedAttribution.utm_term ?? null,
     landing_page:
       mergedAttribution.landing_page ??
       `/c/${campaign.organization_slug}/${campaign.slug}`,

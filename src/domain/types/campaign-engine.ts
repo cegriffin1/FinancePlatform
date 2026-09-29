@@ -197,6 +197,7 @@ export type LeadAttribution = {
   utm_medium: string | null;
   utm_campaign: string | null;
   utm_content: string | null;
+  utm_term: string | null;
   landing_page: string | null;
   territory: string | null;
   captured_at: string;

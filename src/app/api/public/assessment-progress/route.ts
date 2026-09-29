@@ -137,6 +137,7 @@ export async function POST(request: Request) {
           utm_medium: null,
           utm_campaign: null,
           utm_content: null,
+          utm_term: null,
           landing_page: null,
           territory: body.contact?.state ?? null,
           captured_at: now,
@@ -190,6 +191,13 @@ export async function POST(request: Request) {
         lead.compliance.consent_text = PUBLIC_CONSENT_TEXT;
         lead.compliance.consent_version = PUBLIC_CONSENT_VERSION;
       }
+    }
+
+    if (!lead) {
+      return NextResponse.json(
+        { error: "Unable to persist progress" },
+        { status: 500 },
+      );
     }
 
     store.events.push({
