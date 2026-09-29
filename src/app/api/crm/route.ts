@@ -9,28 +9,37 @@ import {
   AGENT_CRM_OUTCOMES,
   CRM_FOLLOW_UP_TYPES,
 } from "@/domain/types/retirement-crm";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
+import { requireOrgAuth, assertSameOrganization } from "@/infrastructure/security/requireOrgAuth";
 
 export async function GET() {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "leads.view_own" });
+  if (!auth.ok) return auth.response;
 
   const store = getSimStore();
+  const orgId = auth.ctx.organizationId;
+  const leads = orgId
+    ? store.leads.filter(
+        (l) =>
+          l.organization_id === orgId ||
+          l.assigned_organization_id === orgId ||
+          !l.organization_id,
+      )
+    : store.leads;
   const crm = new RetirementCrmService();
-  const home = crm.buildAgentHome(store.leads, "Advisor");
-  const followUps = crm.groupFollowUps(store.leads);
+  const home = crm.buildAgentHome(leads, "Advisor");
+  const followUps = crm.groupFollowUps(leads);
   return NextResponse.json({
     home,
     followUps,
-    leads: store.leads,
+    leads,
     ownership_config: store.ownership_config,
     pipeline_stages: PIPELINE_STAGES,
   });
 }
 
 export async function POST(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "leads.update" });
+  if (!auth.ok) return auth.response;
 
   const store = getSimStore();
   const body = await request.json();
@@ -39,6 +48,20 @@ export async function POST(request: Request) {
   const lead = store.leads.find((l) => l.id === body.lead_id);
   if (!lead && action !== "update_ownership_config") {
     return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  }
+  if (
+    lead &&
+    auth.ctx.organizationId &&
+    !assertSameOrganization(
+      auth.ctx,
+      lead.organization_id ?? lead.assigned_organization_id,
+    ) &&
+    lead.organization_id
+  ) {
+    return NextResponse.json(
+      { error: "Forbidden", code: "AUTHORIZATION_ERROR" },
+      { status: 403 },
+    );
   }
 
   try {

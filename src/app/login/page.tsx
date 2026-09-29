@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { hasSupabaseConfig } from "@/lib/env";
+import { LoginForm } from "@/app/login/LoginForm";
 
 export default function LoginPage() {
   const configured = hasSupabaseConfig();
@@ -16,21 +15,16 @@ export default function LoginPage() {
           Sign in
         </h1>
         <p className="mt-3 text-sm text-[var(--ink-muted)]">
-          Auth is wired through Supabase Auth abstractions. Configure environment
-          variables, then connect your preferred sign-in method (magic link or
-          password).
+          Sign in with your ALTUS organization credentials to access the workspace.
         </p>
-        <div className="mt-6 rounded-2xl border border-[var(--line)] bg-white/70 p-4 text-sm">
+        <div className="mt-4 rounded-2xl border border-[var(--line)] bg-white/70 p-4 text-sm">
           Status:{" "}
-          <strong>{configured ? "Supabase keys detected" : "Env not configured"}</strong>
+          <strong>
+            {configured ? "Supabase configured" : "Env not configured"}
+          </strong>
         </div>
-        <div className="mt-6 flex gap-3">
-          <Link href="/app">
-            <Button>Continue to shell</Button>
-          </Link>
-          <Link href="/">
-            <Button variant="ghost">Back</Button>
-          </Link>
+        <div className="mt-6">
+          <LoginForm configured={configured} />
         </div>
       </Card>
     </div>

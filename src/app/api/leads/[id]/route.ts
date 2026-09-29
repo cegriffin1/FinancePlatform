@@ -4,7 +4,10 @@ import { getSimStore } from "@/application/growth/simulationStore";
 import { LeadSlaService } from "@/application/intelligence/lifecycle";
 import type { LeadOutcome, PipelineStage } from "@/domain/types/lead-intelligence";
 import { randomUUID } from "crypto";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
+import {
+  requireOrgAuth,
+  assertSameOrganization,
+} from "@/infrastructure/security/requireOrgAuth";
 
 type Params = Promise<{ id: string }>;
 
@@ -12,13 +15,26 @@ export async function GET(
   _request: Request,
   context: { params: Params },
 ) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "leads.view_own" });
+  if (!auth.ok) return auth.response;
 
   const { id } = await context.params;
   const store = getSimStore();
   const lead = store.leads.find((l) => l.id === id);
   if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (
+    auth.ctx.organizationId &&
+    lead.organization_id &&
+    !assertSameOrganization(
+      auth.ctx,
+      lead.organization_id ?? lead.assigned_organization_id,
+    )
+  ) {
+    return NextResponse.json(
+      { error: "Forbidden", code: "AUTHORIZATION_ERROR" },
+      { status: 403 },
+    );
+  }
 
   const campaign = store.campaigns.find((c) => c.id === lead.campaign_id);
   const org = store.organizations.find(
@@ -40,8 +56,8 @@ export async function POST(
   request: Request,
   context: { params: Params },
 ) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "leads.update" });
+  if (!auth.ok) return auth.response;
 
   const { id } = await context.params;
   const store = getSimStore();

@@ -13,41 +13,22 @@ import {
   SETTER_VERIFICATION_FIELDS,
 } from "@/domain/types/setter-handoff";
 import {
-  DEFAULT_ROLE_PERMISSIONS,
-  type PermissionKey,
-} from "@/domain/permissions/keys";
+  requireOrgAuth,
+  assertSameOrganization,
+} from "@/infrastructure/security/requireOrgAuth";
 import {
   assertPermission,
   AuthorizationError,
 } from "@/application/authorization";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
 
 type Params = Promise<{ id: string }>;
 
-/** Dev/sim auth: role from header or default manager (has setter perms). */
-function grantedFromRequest(request: Request): PermissionKey[] {
-  const role = request.headers.get("x-altus-role") ?? "manager";
-  if (role === "setter") return DEFAULT_ROLE_PERMISSIONS.setter;
-  if (role === "sales") return DEFAULT_ROLE_PERMISSIONS.sales;
-  if (role === "admin") return [...DEFAULT_ROLE_PERMISSIONS.admin];
-  return DEFAULT_ROLE_PERMISSIONS.manager;
-}
-
 export async function GET(
-  request: Request,
+  _request: Request,
   context: { params: Params },
 ) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
-
-  try {
-    assertPermission(grantedFromRequest(request), "setter.leads.view");
-  } catch (e) {
-    if (e instanceof AuthorizationError) {
-      return NextResponse.json({ error: e.message }, { status: 403 });
-    }
-    throw e;
-  }
+  const auth = await requireOrgAuth({ permission: "setter.leads.view" });
+  if (!auth.ok) return auth.response;
 
   const { id } = await context.params;
   const store = getSimStore();
@@ -96,14 +77,27 @@ export async function POST(
   request: Request,
   context: { params: Params },
 ) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "setter.leads.verify" });
+  if (!auth.ok) return auth.response;
 
-  const granted = grantedFromRequest(request);
+  const granted = auth.ctx.permissions;
   const { id } = await context.params;
   const store = getSimStore();
   const lead = store.leads.find((l) => l.id === id);
   if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (
+    auth.ctx.organizationId &&
+    lead.organization_id &&
+    !assertSameOrganization(
+      auth.ctx,
+      lead.organization_id ?? lead.assigned_organization_id,
+    )
+  ) {
+    return NextResponse.json(
+      { error: "Forbidden", code: "AUTHORIZATION_ERROR" },
+      { status: 403 },
+    );
+  }
 
   const body = await request.json();
   const action = body.action as string;

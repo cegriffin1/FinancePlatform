@@ -6,13 +6,13 @@ import { getIntegrationStore } from "@/application/integrations/integrationStore
 import { getSimStore } from "@/application/growth/simulationStore";
 import { runQueuedIntegrationJobs } from "@/application/integrations/registerJobs";
 import type { ChannelProviderConfig } from "@/domain/types/social-integrations";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
+import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 
 const DEMO_ORG = "20000000-0000-4000-8000-000000000003";
 
 export async function POST(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "campaigns.publish" });
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

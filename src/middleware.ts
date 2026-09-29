@@ -2,14 +2,24 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Session refresh middleware. Authorization still happens in server code + RLS.
- * Soft-no-op when Supabase env is absent so local UI work can proceed.
+ * Session refresh + internal route protection.
+ * Public marketing/assessment routes remain open.
+ * Soft-no-op when Supabase env is absent (local UI without credentials).
  */
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { pathname } = request.nextUrl;
+
+  const isInternal =
+    pathname.startsWith("/app") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/setter") ||
+    pathname.startsWith("/marketplace") ||
+    pathname.startsWith("/leads");
 
   if (!url || !anon) {
+    // Without Supabase config, allow local simulation workspace
     return NextResponse.next();
   }
 
@@ -29,7 +39,9 @@ export async function middleware(request: NextRequest) {
           options?: Record<string, unknown>;
         }[],
       ) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        );
         response = NextResponse.next({ request: { headers: request.headers } });
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
@@ -38,12 +50,25 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (isInternal && !user) {
+    const login = new URL("/login", request.url);
+    login.searchParams.set("next", pathname);
+    return NextResponse.redirect(login);
+  }
+
+  if (pathname === "/login" && user) {
+    return NextResponse.redirect(new URL("/app", request.url));
+  }
+
   return response;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|__next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

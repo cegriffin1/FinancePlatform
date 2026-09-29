@@ -13,19 +13,12 @@ import {
 } from "@/application/lifecycle/LeadLifecycleService";
 import { LeadInventoryService } from "@/application/inventory/LeadInventoryService";
 import { CampaignHealthService } from "@/application/analytics/CampaignHealthService";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
-
-function requireAdmin(request: Request) {
-  return request.headers.get("x-altus-role") === "admin";
-}
+import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 
 export async function GET(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "reports.view_all" });
+  if (!auth.ok) return auth.response;
 
-  if (!requireAdmin(request)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
   const store = getSimStore();
   const url = new URL(request.url);
   const view = url.searchParams.get("view") ?? "config";
@@ -60,12 +53,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "reports.view_all" });
+  if (!auth.ok) return auth.response;
 
-  if (!requireAdmin(request)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
   const body = await request.json();
   const action = body.action as string;
   const store = getSimStore();

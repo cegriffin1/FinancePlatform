@@ -10,13 +10,13 @@ import { getChannelProvider } from "@/infrastructure/providers/channels/mockChan
 import { CHANNEL_CAPABILITIES, LIVE_AD_PROVIDERS } from "@/domain/types/social-integrations";
 import { getProviderMode } from "@/infrastructure/security/credentialVault";
 import { runQueuedIntegrationJobs } from "@/application/integrations/registerJobs";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
+import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 
 const DEMO_ORG = "20000000-0000-4000-8000-000000000003";
 
 export async function GET() {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "integrations.view" });
+  if (!auth.ok) return auth.response;
 
   const store = getIntegrationStore();
   const connections = LIVE_AD_PROVIDERS.map((provider) => {
@@ -48,8 +48,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "integrations.manage" });
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

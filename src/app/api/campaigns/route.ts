@@ -7,11 +7,11 @@ import {
   duplicateCampaign,
 } from "@/application/growth/campaignService";
 import type { CampaignOwnerType } from "@/domain/types/campaign-engine";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
+import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 
 export async function POST(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "campaigns.create" });
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

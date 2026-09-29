@@ -7,28 +7,11 @@ import {
   LeadPricingService,
   MarketplacePurchaseService,
 } from "@/application/inventory/LeadInventoryService";
-import {
-  DEFAULT_ROLE_PERMISSIONS,
-  type PermissionKey,
-} from "@/domain/permissions/keys";
-import {
-  assertPermission,
-  AuthorizationError,
-} from "@/application/authorization";
-import { enforceInternalApiAccess } from "@/infrastructure/security/internalApiGate";
-
-function grantedFromRequest(request: Request): PermissionKey[] {
-  const role = request.headers.get("x-altus-role") ?? "admin";
-  if (role === "setter") return DEFAULT_ROLE_PERMISSIONS.setter;
-  if (role === "sales") return DEFAULT_ROLE_PERMISSIONS.sales;
-  if (role === "manager") return DEFAULT_ROLE_PERMISSIONS.manager;
-  if (role === "admin" || role === "owner") return [...DEFAULT_ROLE_PERMISSIONS.admin];
-  return DEFAULT_ROLE_PERMISSIONS.employee;
-}
+import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 
 export async function GET(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "leads.view_team" });
+  if (!auth.ok) return auth.response;
 
   const store = getSimStore();
   const inventory = new LeadInventoryService();
@@ -41,14 +24,8 @@ export async function GET(request: Request) {
   }
 
   if (view === "admin") {
-    try {
-      assertPermission(grantedFromRequest(request), "reports.view_all");
-    } catch (e) {
-      if (e instanceof AuthorizationError) {
-        return NextResponse.json({ error: e.message }, { status: 403 });
-      }
-      throw e;
-    }
+    const admin = await requireOrgAuth({ permission: "reports.view_all" });
+    if (!admin.ok) return admin.response;
     return NextResponse.json({
       buckets: inventory.adminBuckets(store.leads),
       pricing_config: store.pricing_config,
@@ -100,8 +77,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const denied = await enforceInternalApiAccess();
-  if (denied) return denied;
+  const auth = await requireOrgAuth({ permission: "leads.view_team" });
+  if (!auth.ok) return auth.response;
 
   const store = getSimStore();
   const body = await request.json();
@@ -110,7 +87,6 @@ export async function POST(request: Request) {
   const compliance = new LeadComplianceService();
   const pricing = new LeadPricingService();
   const purchaseSvc = new MarketplacePurchaseService();
-  const granted = grantedFromRequest(request);
 
   const adminActions = new Set([
     "update_pricing_config",
@@ -122,14 +98,8 @@ export async function POST(request: Request) {
     "revoke_sharing",
   ]);
   if (adminActions.has(action)) {
-    try {
-      assertPermission(granted, "reports.view_all");
-    } catch (e) {
-      if (e instanceof AuthorizationError) {
-        return NextResponse.json({ error: e.message }, { status: 403 });
-      }
-      throw e;
-    }
+    const admin = await requireOrgAuth({ permission: "reports.view_all" });
+    if (!admin.ok) return admin.response;
   }
 
   try {
