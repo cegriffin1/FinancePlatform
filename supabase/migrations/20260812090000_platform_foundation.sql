@@ -25,41 +25,9 @@ as $$
   select auth.uid();
 $$;
 
-create or replace function public.is_org_member(target_org uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from public.organization_members m
-    where m.organization_id = target_org
-      and m.profile_id = auth.uid()
-      and m.status = 'active'
-  );
-$$;
-
-create or replace function public.has_org_permission(target_org uuid, permission_key text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from public.organization_members m
-    join public.member_roles mr on mr.member_id = m.id
-    join public.role_permissions rp on rp.role_id = mr.role_id
-    join public.permissions p on p.id = rp.permission_id
-    where m.organization_id = target_org
-      and m.profile_id = auth.uid()
-      and m.status = 'active'
-      and p.key = permission_key
-  );
-$$;
+-- is_org_member / has_org_permission are defined after their dependent
+-- relations exist (organization_members, member_roles, role_permissions,
+-- permissions). PostgreSQL validates SQL-function relation refs at CREATE time.
 
 -- ---------------------------------------------------------------------------
 -- Core identity & tenancy
@@ -198,6 +166,44 @@ create table public.member_roles (
   created_by uuid,
   primary key (member_id, role_id)
 );
+
+-- RLS helpers: must follow organization_members + role/permission tables.
+-- security definer + fixed search_path avoids RLS recursion on membership reads.
+create or replace function public.is_org_member(target_org uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.organization_members m
+    where m.organization_id = target_org
+      and m.profile_id = auth.uid()
+      and m.status = 'active'
+  );
+$$;
+
+create or replace function public.has_org_permission(target_org uuid, permission_key text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.organization_members m
+    join public.member_roles mr on mr.member_id = m.id
+    join public.role_permissions rp on rp.role_id = mr.role_id
+    join public.permissions p on p.id = rp.permission_id
+    where m.organization_id = target_org
+      and m.profile_id = auth.uid()
+      and m.status = 'active'
+      and p.key = permission_key
+  );
+$$;
 
 create table public.invitations (
   id uuid primary key default gen_random_uuid(),
