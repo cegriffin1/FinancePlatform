@@ -8,6 +8,9 @@ import {
   requireOrgAuth,
   assertSameOrganization,
 } from "@/infrastructure/security/requireOrgAuth";
+import { createSupabaseServiceClient } from "@/infrastructure/supabase/admin";
+import { isSupabaseDataMode } from "@/lib/dataMode";
+import { logAltusError } from "@/lib/observability";
 
 type Params = Promise<{ id: string }>;
 
@@ -19,6 +22,90 @@ export async function GET(
   if (!auth.ok) return auth.response;
 
   const { id } = await context.params;
+
+  if (isSupabaseDataMode() && auth.ctx.organizationId) {
+    try {
+      const supabase = createSupabaseServiceClient();
+      const { data: lead, error } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("id", id)
+        .eq("organization_id", auth.ctx.organizationId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!lead) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+
+      const [{ data: campaign }, { data: org }, { data: score }, { data: temps }] =
+        await Promise.all([
+          lead.campaign_id
+            ? supabase
+                .from("campaigns")
+                .select("id, name")
+                .eq("id", lead.campaign_id)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+          supabase
+            .from("organizations")
+            .select("id, name")
+            .eq("id", auth.ctx.organizationId)
+            .maybeSingle(),
+          supabase
+            .from("lead_scores")
+            .select("*")
+            .eq("lead_id", id)
+            .eq("organization_id", auth.ctx.organizationId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("lead_temperature_snapshots")
+            .select("*")
+            .eq("lead_id", id)
+            .eq("organization_id", auth.ctx.organizationId)
+            .order("created_at", { ascending: false })
+            .limit(10),
+        ]);
+
+      const mapped = {
+        ...lead,
+        operational_temperature: lead.operational_temperature,
+        temperature_key: lead.temperature_key ?? lead.operational_temperature,
+        score: lead.opportunity_score ?? lead.score,
+        assessment_answers: lead.assessment_answers ?? {},
+        attribution: lead.attribution ?? {},
+        qualification: score
+          ? {
+              opportunity: {
+                opportunity_score: score.total_score,
+                classification: score.classification,
+                explanation: score.explanation,
+                score_version: score.scoring_version,
+              },
+            }
+          : undefined,
+      };
+
+      return NextResponse.json({
+        lead: mapped,
+        events: [],
+        campaignName: campaign?.name ?? null,
+        organizationName: org?.name ?? null,
+        temperatureHistory: temps ?? [],
+        dataMode: "supabase",
+      });
+    } catch (e) {
+      logAltusError("DATABASE_ERROR", "Failed to load durable lead detail", {
+        reason: e instanceof Error ? e.message : "unknown",
+      });
+      return NextResponse.json(
+        { error: "Unable to load lead", code: "DATABASE_ERROR" },
+        { status: 503 },
+      );
+    }
+  }
+
   const store = getSimStore();
   const lead = store.leads.find((l) => l.id === id);
   if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
