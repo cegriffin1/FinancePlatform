@@ -138,7 +138,7 @@ type Props = {
 
 type LaunchChannelStatus = {
   channel: string;
-  status: "LIVE" | "FAILED" | "SKIPPED";
+  status: "SIMULATION" | "FAILED" | "SKIPPED";
   message?: string;
 };
 
@@ -373,7 +373,7 @@ export function LaunchCampaignWizard({
             message: "Account not connected — retry after connecting.",
           };
         }
-        return { channel: c.label, status: "LIVE" };
+        return { channel: c.label, status: "SIMULATION" };
       });
       setChannelStatuses(statuses);
       setCampaignId(json.campaign.id);
@@ -385,7 +385,7 @@ export function LaunchCampaignWizard({
       }
       track("campaign_publish_succeeded", {
         campaignId: json.campaign.id,
-        live: statuses.filter((s) => s.status === "LIVE").length,
+        live: statuses.filter((s) => s.status === "SIMULATION").length,
         failed: statuses.filter((s) => s.status === "FAILED").length,
       });
     } catch (err) {
@@ -416,7 +416,7 @@ export function LaunchCampaignWizard({
   }
 
   if (success && campaignId) {
-    const liveCount = channelStatuses.filter((s) => s.status === "LIVE").length;
+    const liveCount = channelStatuses.filter((s) => s.status === "SIMULATION").length;
     const failed = channelStatuses.filter((s) => s.status === "FAILED");
     return (
       <div className="space-y-6">
@@ -469,12 +469,12 @@ export function LaunchCampaignWizard({
                 <span
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase",
-                    s.status === "LIVE"
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-amber-50 text-amber-900",
+                    s.status === "SIMULATION"
+                      ? "bg-amber-50 text-amber-900"
+                      : "bg-red-50 text-red-800",
                   )}
                 >
-                  {s.status === "LIVE" ? "✓ Live" : "! Failed"}
+                  {s.status === "SIMULATION" ? "✓ Simulation" : "! Failed"}
                 </span>
                 {s.status === "FAILED" && s.channel === "TikTok" ? (
                   <button

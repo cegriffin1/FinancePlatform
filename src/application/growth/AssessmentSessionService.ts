@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import {
   getSimStore,
   type AssessmentFunnelEvent,
@@ -15,6 +15,8 @@ export type AssessmentAttributionInput = {
   utm_campaign?: string | null;
   utm_content?: string | null;
   utm_term?: string | null;
+  altus_campaign_id?: string | null;
+  altus_click_id?: string | null;
   external_campaign_id?: string | null;
   external_ad_set_id?: string | null;
   external_ad_id?: string | null;
@@ -23,6 +25,10 @@ export type AssessmentAttributionInput = {
   source_channel?: string | null;
   landing_page?: string | null;
 };
+
+function newResumeToken() {
+  return randomBytes(32).toString("hex");
+}
 
 export type FunnelEventType =
   | "campaign_viewed"
@@ -60,6 +66,7 @@ export class AssessmentSessionService {
       assessment_definition_id:
         input.assessment_definition_id ?? RETIREMENT_OPPORTUNITY_V1.key,
       assessment_version: input.assessment_version ?? RETIREMENT_OPPORTUNITY_V1.version,
+      resume_token: newResumeToken(),
       attribution: {
         provider: input.attribution.provider ?? null,
         utm_source: input.attribution.utm_source ?? null,
@@ -67,6 +74,9 @@ export class AssessmentSessionService {
         utm_campaign: input.attribution.utm_campaign ?? null,
         utm_content: input.attribution.utm_content ?? null,
         utm_term: input.attribution.utm_term ?? null,
+        altus_campaign_id:
+          input.attribution.altus_campaign_id ?? input.campaign_id,
+        altus_click_id: input.attribution.altus_click_id ?? null,
         external_campaign_id: input.attribution.external_campaign_id ?? null,
         external_ad_set_id: input.attribution.external_ad_set_id ?? null,
         external_ad_id: input.attribution.external_ad_id ?? null,
@@ -88,6 +98,7 @@ export class AssessmentSessionService {
       updated_at: now,
       abandoned_at: null,
       started_at: null,
+      contact_captured_at: null,
     };
     store.assessment_sessions.unshift(session);
     this.track(session.id, "campaign_viewed", {});
@@ -96,6 +107,20 @@ export class AssessmentSessionService {
 
   get(sessionId: string) {
     return getSimStore().assessment_sessions.find((s) => s.id === sessionId) ?? null;
+  }
+
+  /** Public access requires opaque resume token — prevents session enumeration. */
+  getAuthorized(sessionId: string, resumeToken: string) {
+    const session = this.get(sessionId);
+    if (!session || session.resume_token !== resumeToken) return null;
+    return session;
+  }
+
+  getByResumeToken(resumeToken: string) {
+    return (
+      getSimStore().assessment_sessions.find((s) => s.resume_token === resumeToken) ??
+      null
+    );
   }
 
   markStarted(sessionId: string) {

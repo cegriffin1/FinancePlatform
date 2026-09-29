@@ -31,7 +31,11 @@ import {
 import { defaultCompliance } from "@/domain/types/lead-inventory";
 import { AltusCRMProvider } from "@/infrastructure/providers/AltusCRMProvider";
 import { AssessmentSessionService } from "@/application/growth/AssessmentSessionService";
+import { DurableProspectService } from "@/application/growth/DurableProspectService";
 import { RetirementAssessmentEngine } from "@/application/retirement/RetirementAssessmentEngine";
+import { RETIREMENT_OPPORTUNITY_V1 } from "@/application/retirement/assessmentDefinition";
+import { isSupabaseDataMode } from "@/lib/dataMode";
+import { logAltusError } from "@/lib/observability";
 
 export type PublicLeadSubmission = {
   organizationSlug: string;
@@ -65,6 +69,7 @@ export type PublicLeadSubmission = {
     external_creative_id?: string | null;
   };
   sessionId?: string | null;
+  resumeToken?: string | null;
   submissionKey?: string;
   honeypot?: string | null;
   submissionStartedAt?: string | null;
@@ -277,11 +282,84 @@ function distributePlatformLead(lead: SimLead, campaign: SimCampaign) {
 
 export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   const store = getSimStore();
-  const campaign = store.campaigns.find(
+  const durable = new DurableProspectService();
+
+  // Ensure campaign exists in sim (or hydrate from Supabase in durable mode)
+  let campaign = store.campaigns.find(
     (c) =>
       c.organization_slug === input.organizationSlug &&
       c.slug === input.campaignSlug,
   );
+  if (!campaign && isSupabaseDataMode()) {
+    const remote = await durable.resolveCampaign(
+      input.organizationSlug,
+      input.campaignSlug,
+    );
+    if (remote) {
+      const orgId = String(remote.organization_id ?? "");
+      if (!store.organizations.some((o) => o.id === orgId)) {
+        store.organizations.push({
+          id: orgId,
+          slug: input.organizationSlug,
+          name: String(
+            (remote as { organization_name?: string }).organization_name ??
+              input.organizationSlug,
+          ),
+          tier: "STANDARD",
+          territories: ["FL", "TX", "CA", "GA", "NY"],
+          strategies: ["retirement_income", "tax_advantaged_growth"],
+          licenses: ["FL", "TX", "CA", "GA", "NY"],
+          capacityRemaining: 50,
+          status: "active",
+        });
+      }
+      const hydrated: SimCampaign = {
+        id: String(remote.id),
+        organization_id: orgId,
+        owner_id: orgId,
+        owner_type: "SUBSCRIBER_CAMPAIGN",
+        name: String(remote.name ?? input.campaignSlug),
+        slug: input.campaignSlug,
+        organization_slug: input.organizationSlug,
+        status: "published",
+        goal: String(remote.goal ?? "generate_retirement_opportunities"),
+        strategy: "retirement_income",
+        secondary_strategies: [],
+        channels: ["linkedin"],
+        territories: ["FL", "TX"],
+        budget_cents: 0,
+        budget_mode: "daily",
+        currency: "USD",
+        start_date: null,
+        end_date: null,
+        target_lead_count: null,
+        landing_headline: "Retirement Opportunity Assessment",
+        landing_support: "",
+        assessment_template_key: RETIREMENT_OPPORTUNITY_V1.key,
+        qualification_template_key: RETIREMENT_OPPORTUNITY_V1.key,
+        branding: {},
+        distribution_config: {},
+        workflow_status: "active",
+        launched_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        analytics: {
+          views: 0,
+          assessment_starts: 0,
+          assessment_completions: 0,
+          leads: 0,
+          qualified_leads: 0,
+          hot_leads: 0,
+          medium_leads: 0,
+          cold_leads: 0,
+          priority_leads: 0,
+          appointments: 0,
+        },
+      } as unknown as SimCampaign;
+      store.campaigns.unshift(hydrated);
+      campaign = hydrated;
+    }
+  }
   if (!campaign) throw new Error("Campaign not found");
   const status = String(campaign.status);
   if (!["active", "active_simulation", "published"].includes(status)) {
@@ -292,7 +370,28 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   if (!input.contact.email.includes("@")) throw new Error("Valid email required");
 
   const sessions = new AssessmentSessionService();
-  const session = input.sessionId ? sessions.get(input.sessionId) : null;
+  let session = null as ReturnType<AssessmentSessionService["get"]>;
+  if (input.sessionId && input.resumeToken) {
+    session = await durable.getAuthorized(input.sessionId, input.resumeToken);
+  } else if (input.sessionId) {
+    session = sessions.get(input.sessionId);
+  }
+
+  // Idempotency: session already produced a lead
+  if (session?.lead_id) {
+    const existing =
+      store.leads.find((l) => l.id === session!.lead_id) ??
+      null;
+    if (existing) {
+      return {
+        lead: existing,
+        duplicate: true as const,
+        consumerProfile: new RetirementAssessmentEngine().consumerProfile(
+          existing.assessment_answers,
+        ),
+      };
+    }
+  }
   const mergedAnswers = {
     ...(session?.answers ?? {}),
     ...input.answers,
@@ -665,7 +764,30 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   const idx = store.leads.findIndex((l) => l.id === lead.id);
   if (idx >= 0) store.leads[idx] = lead;
 
-  if (input.sessionId) {
+  // Durable persist before session completion link (idempotent on session id)
+  if (isSupabaseDataMode() && session) {
+    try {
+      await durable.persistLeadFromSim(lead, session);
+    } catch (e) {
+      logAltusError("LEAD_CREATION_ERROR", "Durable lead persist failed", {
+        leadId: lead.id,
+        reason: e instanceof Error ? e.message : "unknown",
+      });
+      // Lead remains in-process for recovery; fail the request so client can retry
+      throw e;
+    }
+  }
+
+  if (session) {
+    try {
+      await durable.markCompleted(session, lead.id);
+    } catch (e) {
+      logAltusError("ASSESSMENT_SESSION_ERROR", "Session complete failed", {
+        reason: e instanceof Error ? e.message : "unknown",
+      });
+      if (input.sessionId) sessions.markCompleted(input.sessionId, lead.id);
+    }
+  } else if (input.sessionId) {
     sessions.markCompleted(input.sessionId, lead.id);
   }
 

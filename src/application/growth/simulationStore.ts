@@ -267,6 +267,8 @@ export type AssessmentSession = {
   campaign_slug: string;
   assessment_definition_id: string;
   assessment_version: string;
+  /** Opaque public resume credential — required for public PATCH/GET */
+  resume_token: string;
   attribution: {
     provider: string | null;
     utm_source: string | null;
@@ -274,6 +276,8 @@ export type AssessmentSession = {
     utm_campaign: string | null;
     utm_content: string | null;
     utm_term: string | null;
+    altus_campaign_id: string | null;
+    altus_click_id: string | null;
     external_campaign_id: string | null;
     external_ad_set_id: string | null;
     external_ad_id: string | null;
@@ -296,6 +300,7 @@ export type AssessmentSession = {
   updated_at: string;
   started_at: string | null;
   abandoned_at: string | null;
+  contact_captured_at?: string | null;
 };
 
 export type AssessmentFunnelEvent = {

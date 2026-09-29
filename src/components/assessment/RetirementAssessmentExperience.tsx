@@ -54,6 +54,12 @@ function readAttribution(trafficSource?: string) {
     utm_campaign: isDirect ? "direct_assessment" : params.get("utm_campaign"),
     utm_content: params.get("utm_content"),
     utm_term: params.get("utm_term"),
+    altus_campaign_id: params.get("altus_campaign_id"),
+    altus_click_id:
+      params.get("altus_click_id") ||
+      params.get("fbclid") ||
+      params.get("gclid") ||
+      params.get("li_fat_id"),
     external_campaign_id:
       params.get("campaign_id") || params.get("external_campaign_id"),
     external_ad_set_id: params.get("adset_id") || params.get("ad_set_id"),
@@ -76,6 +82,7 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [history, setHistory] = useState<string[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [resumeToken, setResumeToken] = useState<string | null>(null);
   const [startedAt] = useState(() => new Date().toISOString());
   const [appointmentRequested, setAppointmentRequested] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -108,6 +115,73 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
       }
     }
 
+    try {
+      const raw = sessionStorage.getItem(
+        storageKey(props.organizationSlug, props.campaignSlug),
+      );
+      if (raw && params.get("reset") !== "1") {
+        const parsed = JSON.parse(raw) as {
+          answers?: Record<string, string>;
+          phase?: Phase;
+          sessionId?: string;
+          resumeToken?: string;
+          history?: string[];
+          moneyBridgeSeen?: boolean;
+        };
+        if (parsed.resumeToken) {
+          // Prefer durable resume over creating a new session
+          void fetch(
+            `/api/public/assessment-session?resumeToken=${encodeURIComponent(parsed.resumeToken)}`,
+          )
+            .then((r) => r.json())
+            .then((json) => {
+              if (json.sessionId && json.resumeToken) {
+                setSessionId(json.sessionId);
+                setResumeToken(json.resumeToken);
+                if (json.answers && Object.keys(json.answers).length > 0) {
+                  setAnswers(json.answers);
+                  setHistory(Object.keys(json.answers));
+                  setPhase(
+                    parsed.phase === "contact"
+                      ? "contact"
+                      : parsed.phase === "done"
+                        ? "done"
+                        : "questions",
+                  );
+                  setRestored(true);
+                } else if (parsed.answers && Object.keys(parsed.answers).length) {
+                  setAnswers(parsed.answers);
+                  setHistory(parsed.history ?? Object.keys(parsed.answers));
+                  setPhase(
+                    parsed.phase === "contact" ? "contact" : "questions",
+                  );
+                  setRestored(true);
+                }
+              }
+            })
+            .catch(() => undefined);
+          return;
+        }
+        if (parsed.answers && Object.keys(parsed.answers).length > 0) {
+          setAnswers(parsed.answers);
+          setHistory(parsed.history ?? Object.keys(parsed.answers));
+          setMoneyBridgeSeen(Boolean(parsed.moneyBridgeSeen));
+          setPhase(
+            parsed.phase === "contact"
+              ? "contact"
+              : parsed.phase === "questions" || parsed.phase === "bridge_money"
+                ? "questions"
+                : "intro",
+          );
+          if (parsed.sessionId) setSessionId(parsed.sessionId);
+          if (parsed.resumeToken) setResumeToken(parsed.resumeToken);
+          setRestored(true);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     void fetch("/api/public/assessment-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -120,38 +194,9 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
       .then((r) => r.json())
       .then((json) => {
         if (json.sessionId) setSessionId(json.sessionId);
+        if (json.resumeToken) setResumeToken(json.resumeToken);
       })
       .catch(() => undefined);
-
-    try {
-      const raw = sessionStorage.getItem(
-        storageKey(props.organizationSlug, props.campaignSlug),
-      );
-      if (!raw || params.get("reset") === "1") return;
-      const parsed = JSON.parse(raw) as {
-        answers?: Record<string, string>;
-        phase?: Phase;
-        sessionId?: string;
-        history?: string[];
-        moneyBridgeSeen?: boolean;
-      };
-      if (parsed.answers && Object.keys(parsed.answers).length > 0) {
-        setAnswers(parsed.answers);
-        setHistory(parsed.history ?? Object.keys(parsed.answers));
-        setMoneyBridgeSeen(Boolean(parsed.moneyBridgeSeen));
-        setPhase(
-          parsed.phase === "contact"
-            ? "contact"
-            : parsed.phase === "questions" || parsed.phase === "bridge_money"
-              ? "questions"
-              : "intro",
-        );
-        if (parsed.sessionId) setSessionId(parsed.sessionId);
-        setRestored(true);
-      }
-    } catch {
-      // ignore
-    }
   }, [props.organizationSlug, props.campaignSlug, props.trafficSource]);
 
   useEffect(() => {
@@ -163,6 +208,7 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
           answers,
           phase,
           sessionId,
+          resumeToken,
           history,
           moneyBridgeSeen,
         }),
@@ -174,6 +220,7 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
     answers,
     phase,
     sessionId,
+    resumeToken,
     history,
     moneyBridgeSeen,
     props.organizationSlug,
@@ -200,15 +247,22 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
   }, [phase, current, moneyBridgeSeen]);
 
   async function patchSession(body: Record<string, unknown>) {
-    if (!sessionId) return;
+    if (!sessionId || !resumeToken) return;
     try {
-      await fetch("/api/public/assessment-session", {
+      const res = await fetch("/api/public/assessment-session", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, ...body }),
+        body: JSON.stringify({ sessionId, resumeToken, ...body }),
       });
+      if (!res.ok) {
+        // Surface persistence failures — do not fake success silently
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setError(json.error ?? "Unable to save progress. Please retry.");
+      }
     } catch {
-      // best-effort
+      setError("Unable to save progress. Check your connection and retry.");
     }
   }
 
@@ -292,6 +346,7 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
           appointmentRequested: requestAppointment,
           attribution: readAttribution(props.trafficSource),
           sessionId,
+          resumeToken,
           honeypot,
           submissionStartedAt: startedAt,
         }),

@@ -14,6 +14,12 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  /** Durable persistence mode. Pilot/production must use supabase. */
+  ALTUS_DATA_MODE: z.enum(["simulation", "supabase"]).default("simulation"),
+  ALTUS_ALLOW_UNAUTHENTICATED_SIM: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -27,6 +33,9 @@ export function getEnv(): AppEnv {
     USE_MOCK_PROVIDERS: process.env.USE_MOCK_PROVIDERS ?? "false",
     PROVIDER_MODE: process.env.PROVIDER_MODE ?? "SIMULATION",
     ALLOW_LIVE_AD_PUBLISH: process.env.ALLOW_LIVE_AD_PUBLISH ?? "false",
+    ALTUS_DATA_MODE: process.env.ALTUS_DATA_MODE ?? "simulation",
+    ALTUS_ALLOW_UNAUTHENTICATED_SIM:
+      process.env.ALTUS_ALLOW_UNAUTHENTICATED_SIM === "true" ? "true" : "false",
   });
 }
 

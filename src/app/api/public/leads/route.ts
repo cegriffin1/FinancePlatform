@@ -22,6 +22,7 @@ const bodySchema = z.object({
   honeypot: z.string().optional().nullable(),
   submissionStartedAt: z.string().optional().nullable(),
   sessionId: z.string().uuid().optional().nullable(),
+  resumeToken: z.string().min(16).optional().nullable(),
   attribution: z
     .object({
       utm_source: z.string().nullable().optional(),
@@ -29,6 +30,8 @@ const bodySchema = z.object({
       utm_campaign: z.string().nullable().optional(),
       utm_content: z.string().nullable().optional(),
       utm_term: z.string().nullable().optional(),
+      altus_campaign_id: z.string().nullable().optional(),
+      altus_click_id: z.string().nullable().optional(),
       referrer: z.string().nullable().optional(),
       source_channel: z.string().nullable().optional(),
       landing_page: z.string().nullable().optional(),
