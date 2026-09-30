@@ -187,9 +187,48 @@ export class DurableProspectService {
       return existing.id as string;
     }
 
-    const orgId = lead.organization_id ?? session.organization_id;
+    // Sim store may carry placeholder org/campaign UUIDs — only persist IDs
+    // that exist in Supabase. Prefer assignee, then session host org.
+    const orgCandidates = [
+      lead.organization_id,
+      lead.assigned_organization_id,
+      session.organization_id,
+    ];
+    let orgId: string | null = null;
+    for (const candidate of orgCandidates) {
+      if (!candidate) continue;
+      const { data: orgRow } = await supabase
+        .from("organizations")
+        .select("id")
+        .eq("id", candidate)
+        .maybeSingle();
+      if (orgRow?.id) {
+        orgId = orgRow.id as string;
+        break;
+      }
+    }
     if (!orgId) {
       throw new DataModeError("Lead missing organization_id.");
+    }
+
+    let campaignId: string | null = lead.campaign_id ?? session.campaign_id ?? null;
+    if (campaignId) {
+      const { data: campRow } = await supabase
+        .from("campaigns")
+        .select("id")
+        .eq("id", campaignId)
+        .maybeSingle();
+      if (!campRow?.id) {
+        campaignId = session.campaign_id ?? null;
+        if (campaignId) {
+          const { data: sessionCamp } = await supabase
+            .from("campaigns")
+            .select("id")
+            .eq("id", campaignId)
+            .maybeSingle();
+          if (!sessionCamp?.id) campaignId = null;
+        }
+      }
     }
 
     const now = new Date().toISOString();
@@ -223,7 +262,7 @@ export class DurableProspectService {
       .insert({
         id: lead.id,
         organization_id: orgId,
-        campaign_id: lead.campaign_id,
+        campaign_id: campaignId,
         contact_id: contact?.id ?? null,
         assessment_session_id: session.id,
         status: lead.status === "new" ? "new" : "qualified",

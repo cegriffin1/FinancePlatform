@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark } from "lucide-react";
 import { AltusContainer } from "@/components/altus/AltusContainer";
+import { BookmarkIcon } from "@/components/altus/BookmarkIcon";
 import { cn } from "@/lib/cn";
 
 const FILTERS = ["All", "Articles", "Videos", "Guides"] as const;
@@ -127,9 +127,9 @@ export function AltusInsights() {
                   <button
                     type="button"
                     aria-label="Save article"
-                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-[var(--altus-text-secondary)] opacity-0 shadow-sm transition group-hover:opacity-100"
+                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-[var(--altus-text-secondary)] shadow-sm"
                   >
-                    <Bookmark className="h-3.5 w-3.5" />
+                    <BookmarkIcon size={14} />
                   </button>
                 </div>
                 <div className="p-3.5">

@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Bookmark } from "lucide-react";
 import { AltusContainer } from "@/components/altus/AltusContainer";
+import { BookmarkIcon } from "@/components/altus/BookmarkIcon";
 import { cn } from "@/lib/cn";
 
 const QUICK = [
@@ -58,6 +58,9 @@ export function AltusHero() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              name="altus-resource-search"
+              autoComplete="off"
+              spellCheck={false}
               placeholder="Search strategies, guides, ideas, calculators..."
               className="min-w-0 flex-1 bg-transparent px-4 py-2.5 text-[13px] text-[var(--altus-text)] outline-none placeholder:text-[var(--altus-text-secondary)]"
               aria-label="Search ALTUS resources"
@@ -102,7 +105,7 @@ export function AltusHero() {
                   saved ? "text-[var(--altus-blue)]" : "text-[var(--altus-text-secondary)]",
                 )}
               >
-                <Bookmark className={cn("h-4 w-4", saved && "fill-current")} />
+                <BookmarkIcon filled={saved} />
               </button>
             </div>
             <div className="px-5 pb-2 pt-4">

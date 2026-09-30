@@ -17,6 +17,7 @@ import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from "crypto";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
+import { ensureDirectRetirementSource } from "../bootstrap/ensure-direct-retirement-source.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const OUT = resolve(ROOT, ".staging-fixtures.local.json");
@@ -170,6 +171,12 @@ async function main() {
   console.log("Seeding synthetic staging fixtures for Altus-Lead-Staging…");
   console.log(`Project ref: ${expectedRef}`);
 
+  // Canonical homepage Direct Retirement source (not a test-org fixture)
+  const direct = await ensureDirectRetirementSource(admin);
+  console.log(
+    `Direct source: ${direct.organization.slug}/${direct.campaign.slug}`,
+  );
+
   const orgA = await upsertOrg("altus-test-org-a", "ALTUS TEST ORG A");
   const orgB = await upsertOrg("altus-test-org-b", "ALTUS TEST ORG B");
   const userA = await ensureUser(
@@ -188,6 +195,20 @@ async function main() {
   const fixtures = {
     created_at: new Date().toISOString(),
     project_ref: expectedRef,
+    directRetirement: {
+      organization: {
+        id: direct.organization.id,
+        slug: direct.organization.slug,
+        name: direct.organization.name,
+      },
+      campaign: {
+        id: direct.campaign.id,
+        slug: direct.campaign.slug,
+        organization_id: direct.campaign.organization_id,
+        name: direct.campaign.name,
+        owner_type: direct.campaign.owner_type,
+      },
+    },
     orgA: { id: orgA.id, slug: orgA.slug, name: orgA.name },
     orgB: { id: orgB.id, slug: orgB.slug, name: orgB.name },
     userA: {

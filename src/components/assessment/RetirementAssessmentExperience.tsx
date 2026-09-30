@@ -44,14 +44,32 @@ function storageKey(org: string, campaign: string) {
 
 function readAttribution(trafficSource?: string) {
   const params = new URLSearchParams(window.location.search);
-  const isDirect = trafficSource === "DIRECT_ASSESSMENT";
+  const hasPaidSignals = Boolean(
+    params.get("utm_source") ||
+      params.get("utm_medium") ||
+      params.get("utm_campaign") ||
+      params.get("utm_content") ||
+      params.get("utm_term") ||
+      params.get("altus_campaign_id") ||
+      params.get("altus_click_id") ||
+      params.get("fbclid") ||
+      params.get("gclid") ||
+      params.get("li_fat_id"),
+  );
+  // Homepage defaults to DIRECT_ASSESSMENT only when no paid/ad signals are present.
+  const useDirectDefaults =
+    trafficSource === "DIRECT_ASSESSMENT" && !hasPaidSignals;
   return {
-    provider: isDirect
+    provider: useDirectDefaults
       ? "direct"
       : params.get("provider") || params.get("utm_source") || params.get("channel"),
-    utm_source: isDirect ? "DIRECT_ASSESSMENT" : params.get("utm_source"),
-    utm_medium: isDirect ? "direct" : params.get("utm_medium"),
-    utm_campaign: isDirect ? "direct_assessment" : params.get("utm_campaign"),
+    utm_source: useDirectDefaults
+      ? "DIRECT_ASSESSMENT"
+      : params.get("utm_source"),
+    utm_medium: useDirectDefaults ? "direct" : params.get("utm_medium"),
+    utm_campaign: useDirectDefaults
+      ? "direct_assessment"
+      : params.get("utm_campaign"),
     utm_content: params.get("utm_content"),
     utm_term: params.get("utm_term"),
     altus_campaign_id: params.get("altus_campaign_id"),
@@ -67,11 +85,11 @@ function readAttribution(trafficSource?: string) {
     external_creative_id:
       params.get("creative_id") || params.get("ad_creative_id"),
     referrer: document.referrer || null,
-    source_channel: isDirect
+    source_channel: useDirectDefaults
       ? "DIRECT_ASSESSMENT"
       : params.get("channel") || params.get("utm_source") || "direct",
     landing_page: window.location.pathname,
-    ad_provider: isDirect
+    ad_provider: useDirectDefaults
       ? "direct"
       : params.get("provider") || params.get("utm_source"),
   };
@@ -95,10 +113,55 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
   const [moneyBridgeSeen, setMoneyBridgeSeen] = useState(false);
   const [profile, setProfile] = useState<ConsumerProfile | null>(null);
   const [leadId, setLeadId] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [sessionBootError, setSessionBootError] = useState<string | null>(null);
   const sessionInit = useRef(false);
 
   const current = engine.nextQuestion(answers);
   const stageMeta = engine.stageProgress(answers);
+
+  async function createDurableSession(): Promise<boolean> {
+    setSessionBootError(null);
+    setSessionReady(false);
+    try {
+      const res = await fetch("/api/public/assessment-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationSlug: props.organizationSlug,
+          campaignSlug: props.campaignSlug,
+          attribution: readAttribution(props.trafficSource),
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        sessionId?: string;
+        resumeToken?: string;
+        error?: string;
+      };
+      if (!res.ok || !json.sessionId || !json.resumeToken) {
+        setSessionBootError(
+          json.error ||
+            "Unable to start a secure assessment session. Please try again.",
+        );
+        setSessionId(null);
+        setResumeToken(null);
+        setSessionReady(false);
+        return false;
+      }
+      setSessionId(json.sessionId);
+      setResumeToken(json.resumeToken);
+      setSessionReady(true);
+      return true;
+    } catch {
+      setSessionBootError(
+        "Unable to start a secure assessment session. Check your connection and try again.",
+      );
+      setSessionId(null);
+      setResumeToken(null);
+      setSessionReady(false);
+      return false;
+    }
+  }
 
   useEffect(() => {
     if (sessionInit.current) return;
@@ -115,88 +178,63 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
       }
     }
 
-    try {
-      const raw = sessionStorage.getItem(
-        storageKey(props.organizationSlug, props.campaignSlug),
-      );
-      if (raw && params.get("reset") !== "1") {
-        const parsed = JSON.parse(raw) as {
-          answers?: Record<string, string>;
-          phase?: Phase;
-          sessionId?: string;
-          resumeToken?: string;
-          history?: string[];
-          moneyBridgeSeen?: boolean;
-        };
-        if (parsed.resumeToken) {
-          // Prefer durable resume over creating a new session
-          void fetch(
-            `/api/public/assessment-session?resumeToken=${encodeURIComponent(parsed.resumeToken)}`,
-          )
-            .then((r) => r.json())
-            .then((json) => {
-              if (json.sessionId && json.resumeToken) {
-                setSessionId(json.sessionId);
-                setResumeToken(json.resumeToken);
-                if (json.answers && Object.keys(json.answers).length > 0) {
-                  setAnswers(json.answers);
-                  setHistory(Object.keys(json.answers));
-                  setPhase(
-                    parsed.phase === "contact"
-                      ? "contact"
-                      : parsed.phase === "done"
-                        ? "done"
-                        : "questions",
-                  );
-                  setRestored(true);
-                } else if (parsed.answers && Object.keys(parsed.answers).length) {
-                  setAnswers(parsed.answers);
-                  setHistory(parsed.history ?? Object.keys(parsed.answers));
-                  setPhase(
-                    parsed.phase === "contact" ? "contact" : "questions",
-                  );
-                  setRestored(true);
-                }
+    void (async () => {
+      try {
+        const raw = sessionStorage.getItem(
+          storageKey(props.organizationSlug, props.campaignSlug),
+        );
+        if (raw && params.get("reset") !== "1") {
+          const parsed = JSON.parse(raw) as {
+            answers?: Record<string, string>;
+            phase?: Phase;
+            sessionId?: string;
+            resumeToken?: string;
+            history?: string[];
+            moneyBridgeSeen?: boolean;
+          };
+          if (parsed.resumeToken) {
+            const r = await fetch(
+              `/api/public/assessment-session?resumeToken=${encodeURIComponent(parsed.resumeToken)}`,
+            );
+            const json = (await r.json().catch(() => ({}))) as {
+              sessionId?: string;
+              resumeToken?: string;
+              answers?: Record<string, string>;
+            };
+            if (r.ok && json.sessionId && json.resumeToken) {
+              setSessionId(json.sessionId);
+              setResumeToken(json.resumeToken);
+              setSessionReady(true);
+              if (json.answers && Object.keys(json.answers).length > 0) {
+                setAnswers(json.answers);
+                setHistory(Object.keys(json.answers));
+                setPhase(
+                  parsed.phase === "contact"
+                    ? "contact"
+                    : parsed.phase === "done"
+                      ? "done"
+                      : "questions",
+                );
+                setRestored(true);
+              } else if (parsed.answers && Object.keys(parsed.answers).length) {
+                setAnswers(parsed.answers);
+                setHistory(parsed.history ?? Object.keys(parsed.answers));
+                setPhase(
+                  parsed.phase === "contact" ? "contact" : "questions",
+                );
+                setRestored(true);
               }
-            })
-            .catch(() => undefined);
-          return;
+              return;
+            }
+          }
         }
-        if (parsed.answers && Object.keys(parsed.answers).length > 0) {
-          setAnswers(parsed.answers);
-          setHistory(parsed.history ?? Object.keys(parsed.answers));
-          setMoneyBridgeSeen(Boolean(parsed.moneyBridgeSeen));
-          setPhase(
-            parsed.phase === "contact"
-              ? "contact"
-              : parsed.phase === "questions" || parsed.phase === "bridge_money"
-                ? "questions"
-                : "intro",
-          );
-          if (parsed.sessionId) setSessionId(parsed.sessionId);
-          if (parsed.resumeToken) setResumeToken(parsed.resumeToken);
-          setRestored(true);
-        }
+      } catch {
+        // fall through to create
       }
-    } catch {
-      // ignore
-    }
-
-    void fetch("/api/public/assessment-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        organizationSlug: props.organizationSlug,
-        campaignSlug: props.campaignSlug,
-        attribution: readAttribution(props.trafficSource),
-      }),
-    })
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.sessionId) setSessionId(json.sessionId);
-        if (json.resumeToken) setResumeToken(json.resumeToken);
-      })
-      .catch(() => undefined);
+      await createDurableSession();
+    })();
+    // Boot once on mount for this org/campaign pair; createDurableSession closes over latest props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot session boot
   }, [props.organizationSlug, props.campaignSlug, props.trafficSource]);
 
   useEffect(() => {
@@ -267,6 +305,12 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
   }
 
   async function startAssessment() {
+    // Never advance without a durable (or mode-valid) session — no silent sim path.
+    if (!sessionId || !resumeToken || !sessionReady) {
+      const ok = await createDurableSession();
+      if (!ok) return;
+    }
+    setError(null);
     setPhase("questions");
     await patchSession({ action: "start" });
     if (props.embedded) {
@@ -329,6 +373,12 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
     },
     requestAppointment: boolean,
   ) {
+    if (!sessionId || !resumeToken || !sessionReady) {
+      setError(
+        "Assessment session is not ready. Please retry starting the assessment.",
+      );
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -454,10 +504,7 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
         {restored && phase !== "done" ? (
           <p className="mb-3 text-xs font-semibold text-[var(--altus-blue)]" role="status">
             Progress restored.{" "}
-            <a
-              className="underline"
-              href={`${typeof window !== "undefined" ? window.location.pathname : ""}?reset=1`}
-            >
+            <a className="underline" href="?reset=1">
               Start over
             </a>
           </p>
@@ -481,12 +528,31 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
             <p className="mt-3 text-sm font-semibold text-white/85">
               Takes approximately 2–4 minutes.
             </p>
+            {sessionBootError ? (
+              <div
+                className="mt-6 rounded-md bg-white/15 px-4 py-3 text-sm text-white"
+                role="alert"
+              >
+                <p className="font-semibold">Assessment unavailable</p>
+                <p className="mt-1 text-white/90">{sessionBootError}</p>
+                <button
+                  type="button"
+                  className="mt-3 min-h-10 rounded-md bg-white px-4 py-2 text-sm font-semibold text-[var(--altus-blue)]"
+                  onClick={() => void createDurableSession()}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
             <button
               type="button"
-              className="mt-8 min-h-12 rounded-md bg-white px-5 py-3 text-sm font-semibold text-[var(--altus-blue)] transition hover:bg-white/95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              disabled={Boolean(sessionBootError) || (!sessionReady && !sessionBootError)}
+              className="mt-8 min-h-12 rounded-md bg-white px-5 py-3 text-sm font-semibold text-[var(--altus-blue)] transition hover:bg-white/95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void startAssessment()}
             >
-              Start Assessment
+              {!sessionReady && !sessionBootError
+                ? "Preparing…"
+                : "Start Assessment"}
             </button>
             <p className="mt-5 text-xs font-medium tracking-wide text-white/70">
               Private · Secure · Personalized

@@ -290,14 +290,23 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
       c.organization_slug === input.organizationSlug &&
       c.slug === input.campaignSlug,
   );
-  if (!campaign && isSupabaseDataMode()) {
+  // In supabase mode, always rebind sim campaign IDs to durable rows so
+  // placeholder simulation UUIDs never win over real organization/campaign FKs.
+  if (isSupabaseDataMode()) {
     const remote = await durable.resolveCampaign(
       input.organizationSlug,
       input.campaignSlug,
     );
     if (remote) {
       const orgId = String(remote.organization_id ?? "");
-      if (!store.organizations.some((o) => o.id === orgId)) {
+      const ownerType = (remote.owner_type as SimCampaign["owner_type"]) ||
+        "SUBSCRIBER_CAMPAIGN";
+      const bySlug = store.organizations.find(
+        (o) => o.slug === input.organizationSlug,
+      );
+      if (bySlug) {
+        bySlug.id = orgId;
+      } else if (orgId && !store.organizations.some((o) => o.id === orgId)) {
         store.organizations.push({
           id: orgId,
           slug: input.organizationSlug,
@@ -313,51 +322,61 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
           status: "active",
         });
       }
-      const hydrated: SimCampaign = {
-        id: String(remote.id),
-        organization_id: orgId,
-        owner_id: orgId,
-        owner_type: "SUBSCRIBER_CAMPAIGN",
-        name: String(remote.name ?? input.campaignSlug),
-        slug: input.campaignSlug,
-        organization_slug: input.organizationSlug,
-        status: "published",
-        goal: String(remote.goal ?? "generate_retirement_opportunities"),
-        strategy: "retirement_income",
-        secondary_strategies: [],
-        channels: ["linkedin"],
-        territories: ["FL", "TX"],
-        budget_cents: 0,
-        budget_mode: "daily",
-        currency: "USD",
-        start_date: null,
-        end_date: null,
-        target_lead_count: null,
-        landing_headline: "Retirement Opportunity Assessment",
-        landing_support: "",
-        assessment_template_key: RETIREMENT_OPPORTUNITY_V1.key,
-        qualification_template_key: RETIREMENT_OPPORTUNITY_V1.key,
-        branding: {},
-        distribution_config: {},
-        workflow_status: "active",
-        launched_at: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        analytics: {
-          views: 0,
-          assessment_starts: 0,
-          assessment_completions: 0,
-          leads: 0,
-          qualified_leads: 0,
-          hot_leads: 0,
-          medium_leads: 0,
-          cold_leads: 0,
-          priority_leads: 0,
-          appointments: 0,
-        },
-      } as unknown as SimCampaign;
-      store.campaigns.unshift(hydrated);
-      campaign = hydrated;
+      if (campaign) {
+        campaign.id = String(remote.id);
+        campaign.organization_id = orgId;
+        campaign.owner_id = orgId;
+        campaign.owner_type = ownerType;
+        if (!["active", "active_simulation", "published"].includes(String(campaign.status))) {
+          campaign.status = "active";
+        }
+      } else {
+        const hydrated: SimCampaign = {
+          id: String(remote.id),
+          organization_id: orgId,
+          owner_id: orgId,
+          owner_type: ownerType,
+          name: String(remote.name ?? input.campaignSlug),
+          slug: input.campaignSlug,
+          organization_slug: input.organizationSlug,
+          status: "active",
+          goal: String(remote.goal ?? "generate_retirement_opportunities"),
+          strategy: "retirement_income",
+          secondary_strategies: [],
+          channels: ["linkedin"],
+          territories: ["FL", "TX"],
+          budget_cents: 0,
+          budget_mode: "daily",
+          currency: "USD",
+          start_date: null,
+          end_date: null,
+          target_lead_count: null,
+          landing_headline: "Retirement Opportunity Assessment",
+          landing_support: "",
+          assessment_template_key: RETIREMENT_OPPORTUNITY_V1.key,
+          qualification_template_key: RETIREMENT_OPPORTUNITY_V1.key,
+          branding: {},
+          distribution_config: {},
+          workflow_status: "active",
+          launched_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          analytics: {
+            views: 0,
+            assessment_starts: 0,
+            assessment_completions: 0,
+            leads: 0,
+            qualified_leads: 0,
+            hot_leads: 0,
+            medium_leads: 0,
+            cold_leads: 0,
+            priority_leads: 0,
+            appointments: 0,
+          },
+        } as unknown as SimCampaign;
+        store.campaigns.unshift(hydrated);
+        campaign = hydrated;
+      }
     }
   }
   if (!campaign) throw new Error("Campaign not found");
@@ -373,8 +392,16 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   let session = null as ReturnType<AssessmentSessionService["get"]>;
   if (input.sessionId && input.resumeToken) {
     session = await durable.getAuthorized(input.sessionId, input.resumeToken);
-  } else if (input.sessionId) {
+  } else if (input.sessionId && !isSupabaseDataMode()) {
+    // Simulation-only: allow in-memory session id without resume token
     session = sessions.get(input.sessionId);
+  }
+
+  // Supabase mode: never accept a lead without an authorized durable session
+  if (isSupabaseDataMode() && !session) {
+    throw new Error(
+      "A durable assessment session is required before submitting contact details.",
+    );
   }
 
   // Idempotency: session already produced a lead

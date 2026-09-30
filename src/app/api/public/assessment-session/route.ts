@@ -71,7 +71,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Do not trust client altus_campaign_id — bind to resolved campaign
+    // Session FK always binds to the resolved landing campaign (e.g. Direct Retirement).
+    // Client-supplied altus_campaign_id (paid parent) is preserved in attribution when present.
     const session = await durable.createSession({
       campaign_id: campaign.id as string,
       organization_id: orgId,
@@ -86,7 +87,9 @@ export async function POST(request: Request) {
       assessment_version: RETIREMENT_OPPORTUNITY_V1.version,
       attribution: {
         ...body.attribution,
-        altus_campaign_id: campaign.id as string,
+        // Preserve paid altus_campaign_id when supplied; else bind to landing campaign.
+        altus_campaign_id:
+          body.attribution.altus_campaign_id ?? (campaign.id as string),
       },
     });
 

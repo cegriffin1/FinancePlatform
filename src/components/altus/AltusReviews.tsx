@@ -85,7 +85,9 @@ export function AltusReviews() {
         <div className="grid gap-4 rounded-[12px] border border-[var(--altus-border)] bg-[var(--altus-section)] p-4 md:grid-cols-[0.85fr_1.15fr] md:p-5">
           <div className="rounded-[10px] bg-[var(--altus-blue)] px-5 py-6 text-white">
             <div className="text-[3rem] font-bold leading-none">4.8</div>
-            <div className="mt-1 text-[15px] tracking-wide">★★★★★</div>
+            <div className="mt-1 text-[15px] tracking-wide" aria-label="5 out of 5">
+              5.0 rating
+            </div>
             <p className="mt-3 text-[13px] text-white/90">Verified member reviews</p>
           </div>
           <div className="space-y-3 self-center px-1 py-2 md:px-3">
@@ -153,7 +155,7 @@ export function AltusReviews() {
                       {review.name}
                     </p>
                     <span className="text-[11px] font-semibold text-[var(--altus-success)]">
-                      ✓ Verified
+                      Verified
                     </span>
                   </div>
                   <p className="text-[11px] text-[var(--altus-text-secondary)]">
@@ -161,7 +163,9 @@ export function AltusReviews() {
                   </p>
                 </div>
               </div>
-              <p className="mt-1 text-[12px] text-[var(--altus-warning)]">★★★★★</p>
+              <p className="mt-1 text-[12px] font-semibold text-[var(--altus-warning)]">
+                5 / 5
+              </p>
               <p className="mt-2 text-[13px] leading-relaxed text-[var(--altus-text)]">
                 {review.text}
               </p>
