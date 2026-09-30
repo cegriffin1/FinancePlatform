@@ -86,6 +86,16 @@ Staging fixture seeder also ensures this canonical source (separate from `altus-
 
 In `ALTUS_DATA_MODE=supabase`, the assessment UI must not silently fall back to simulation when session creation fails.
 
+## Campaign media (Slice A)
+
+- Private Supabase Storage bucket: `campaign-media`
+- Object path: `{organization_id}/{asset_id}/{safe_filename}`
+- Metadata table: `public.media_assets` (migration `20260929110000_campaign_media_assets.sql`)
+- Allowed types: JPG/JPEG, PNG, WEBP, MP4, PDF — originals preserved (no silent compress/transcode)
+- Access: authenticated Next.js APIs → `requireOrgAuth` → service_role upload + short-lived signed URLs
+- **Migration path:** `20260929100000` remains local-only / unapplied. Do **not** `db push` / apply media migration until the 100000 apply path is resolved (do not repair/squash/mark applied).
+- **Future hardening:** production-scale malware/antivirus scanning for uploads is not part of Slice A.
+
 ## Branch policy
 
 - Work on feature branches (e.g. `feature/platform-foundation`)
