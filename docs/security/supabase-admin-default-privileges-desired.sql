@@ -1,3 +1,28 @@
+-- =============================================================================
+-- ALTUS — DESIRED INFRASTRUCTURE CONTROL (NOT AN EXECUTABLE MIGRATION)
+-- =============================================================================
+--
+-- 1. This SQL represents desired defense-in-depth infrastructure hardening for
+--    FUTURE default privileges of role supabase_admin in schema public.
+-- 2. It was NEVER applied to staging (remote migration history never recorded it).
+-- 3. Hosted Supabase tenant roles cannot currently execute:
+--      ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin ...
+--    (SQLSTATE 42501 — requires supabase_admin/superuser semantics).
+-- 4. It was removed from supabase/migrations/ because leaving an impossible
+--    migration in the executable chain blocks legitimate future migrations
+--    (including 20260929110000 campaign media).
+-- 5. Removal MUST NOT be interpreted as this control having been applied.
+--    Live pg_default_acl for supabase_admin may still grant anon/authenticated
+--    defaults on FUTURE objects created as that role.
+-- 6. Git history retains the original migration file at commit bf750b7
+--    (path: supabase/migrations/20260929100000_supabase_admin_default_privilege_hardening.sql).
+-- 7. If Supabase later exposes a supported privileged mechanism, reevaluate
+--    applying this control through a supported path — do not fake migration history.
+--
+-- Related operational rule: see docs/security-model.md
+--   "ALTUS FUTURE OBJECT CREATOR RULE"
+-- =============================================================================
+
 -- ALTUS — harden FUTURE default privileges for role supabase_admin in public
 -- After: 20260929090000_rls_null_org_hardening.sql
 --

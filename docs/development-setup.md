@@ -93,8 +93,8 @@ In `ALTUS_DATA_MODE=supabase`, the assessment UI must not silently fall back to 
 - Metadata table: `public.media_assets` (migration `20260929110000_campaign_media_assets.sql`)
 - Allowed types: JPG/JPEG, PNG, WEBP, MP4, PDF — originals preserved (no silent compress/transcode)
 - Access: authenticated Next.js APIs → `requireOrgAuth` → service_role upload + short-lived signed URLs
-- **Migration path:** `20260929100000` remains local-only / unapplied. Do **not** `db push` / apply media migration until the 100000 apply path is resolved (do not repair/squash/mark applied).
-- **Future hardening:** production-scale malware/antivirus scanning for uploads is not part of Slice A.
+- **Migration path:** Campaign media schema is `20260929110000_campaign_media_assets.sql`. The unexecutable `supabase_admin` default-privilege control was moved out of the migration chain to `docs/security/supabase-admin-default-privileges-desired.sql` (Option C — never applied; do not mark applied / repair).
+- **Future hardening:** production-scale malware/antivirus scanning for uploads is not part of Slice A. See also **ALTUS FUTURE OBJECT CREATOR RULE** in `docs/security-model.md`.
 
 ## Branch policy
 

@@ -1,12 +1,9 @@
 -- ALTUS Campaign Launch Slice A — media_assets + private campaign-media bucket
--- After: 20260929100000_supabase_admin_default_privilege_hardening.sql
+-- After: 20260929090000_rls_null_org_hardening.sql
 --
--- IMPORTANT MIGRATION PATH NOTE:
---   20260929100000 is currently LOCAL-ONLY / unapplied on remote (CLI apply fails
---   with 42501 for ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin).
---   Do NOT push/apply this migration until the 100000 apply path is resolved
---   without repair/squash/history edits. Any normal db push would attempt
---   100000 first.
+-- Note: former 20260929100000 (supabase_admin default privileges) was never
+-- applied remotely and was moved to docs/security/supabase-admin-default-
+-- privileges-desired.sql (Option C) so it no longer blocks this migration.
 --
 -- Scope:
 --   public.media_assets (tenant metadata)
@@ -16,7 +13,6 @@
 -- Does NOT:
 --   attach media to campaigns (Slice C)
 --   implement Media Library UI (Slice B)
---   modify 100000
 --   weaken existing RLS/grants
 --
 -- Future hardening: production-scale malware scanning for uploads.

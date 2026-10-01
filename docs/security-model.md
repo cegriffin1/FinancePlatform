@@ -28,6 +28,30 @@ Every protected query path must be organization-scoped at **both** application a
 - Service role bypasses RLS for controlled admin/jobs only; never expose service role to the browser.
 - Storage paths include `organization_id` prefixes; storage policies mirror table isolation.
 
+## ALTUS FUTURE OBJECT CREATOR RULE
+
+All ALTUS `public`-schema objects must be created through Git-tracked migrations executed as the normal migration owner (`postgres`).
+
+Do **not** manually create ALTUS public-schema objects as `supabase_admin` (SQL Editor or other platform paths).
+
+Every new public table must explicitly define:
+
+- ownership expectations (`postgres`)
+- RLS enabled (prefer `FORCE ROW LEVEL SECURITY` for tenant tables)
+- tenant policies (no `organization_id IS NULL` business bypass)
+- least-privilege grants (hybrid model: anon none; authenticated only intentional JWT paths; service_role for trusted server DML)
+
+Post-migration validation must **fail** if:
+
+1. Any ALTUS `public` table has `relowner != postgres`
+2. Any ALTUS `public` table has `relrowsecurity = false`
+3. `anon` has an unexpected public-table privilege
+4. A new public object appears outside the expected Git-tracked migration state
+
+Also alert if new public objects are unexpectedly owned by `supabase_admin`.
+
+Note: desired `ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin` hardening is tracked as non-executable intent in `docs/security/supabase-admin-default-privileges-desired.sql` (never applied; not in the migration chain).
+
 ## Permission evaluation
 
 ```text
