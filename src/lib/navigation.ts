@@ -5,6 +5,7 @@
 export const APP_NAV = [
   { href: "/app", label: "Home", permission: null },
   { href: "/app/campaigns", label: "Campaigns", permission: "campaigns.view" },
+  { href: "/app/media", label: "Media Library", permission: "campaigns.view" },
   { href: "/app/leads", label: "Leads", permission: "leads.view_own" },
   { href: "/setter", label: "Setter", permission: "setter.leads.view" },
   { href: "/app/pipeline", label: "Pipeline", permission: "pipeline.view" },
