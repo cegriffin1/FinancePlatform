@@ -6,8 +6,10 @@ import {
   updateCampaignStatus,
   duplicateCampaign,
 } from "@/application/growth/campaignService";
+import { CampaignMediaAttachmentService } from "@/application/media/CampaignMediaAttachmentService";
 import type { CampaignOwnerType } from "@/domain/types/campaign-engine";
 import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
+import { isSupabaseDataMode } from "@/lib/dataMode";
 
 export async function POST(request: Request) {
   const auth = await requireOrgAuth({ permission: "campaigns.create" });
@@ -34,6 +36,19 @@ export async function POST(request: Request) {
         typeof body.draftId === "string" && body.draftId.length > 0
           ? body.draftId
           : null;
+
+      // Supabase mode: ensure a durable org-scoped campaign for media attachments.
+      if (isSupabaseDataMode() && auth.ctx.organizationId) {
+        const durableId = await new CampaignMediaAttachmentService().ensureDurableDraftCampaign(
+          {
+            organizationId: auth.ctx.organizationId,
+            name: draft.name,
+            campaignId: existingId,
+            createdBy: auth.ctx.userId,
+          },
+        );
+        return NextResponse.json({ ok: true, campaignId: durableId });
+      }
 
       if (existingId) {
         const { getSimStore } = await import(

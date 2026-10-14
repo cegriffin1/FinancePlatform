@@ -8,6 +8,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CreativeMediaPanel } from "@/components/campaigns/CreativeMediaPanel";
 import { cn } from "@/lib/cn";
 
 const STEPS = [
@@ -596,7 +597,41 @@ export function LaunchCampaignWizard({
           <StepAudience draft={draft} onPatch={patch} />
         )}
         {current.key === "creative" && (
-          <StepCreative draft={draft} onPatch={patch} />
+          <StepCreative
+            draft={draft}
+            onPatch={patch}
+            campaignId={campaignId}
+            onNeedCampaign={async () => {
+              // Force an immediate draft save so media attachment has a durable campaign id.
+              try {
+                const res = await fetch("/api/campaigns", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "save_draft",
+                    draftId: campaignId,
+                    draft: {
+                      owner_type: ownerType,
+                      name: draft.name || "Untitled campaign",
+                      goal: draft.goal,
+                      channels: draft.channels,
+                      locations: draft.locations,
+                      budget: draft.budget,
+                      budget_mode: draft.budgetMode,
+                    },
+                  }),
+                });
+                const json = await res.json();
+                if (res.ok && json.campaignId) {
+                  setCampaignId(json.campaignId);
+                  return json.campaignId as string;
+                }
+              } catch {
+                // ignore
+              }
+              return null;
+            }}
+          />
         )}
         {current.key === "budget" && (
           <StepBudget
@@ -910,9 +945,13 @@ function StepAudience({
 function StepCreative({
   draft,
   onPatch,
+  campaignId,
+  onNeedCampaign,
 }: {
   draft: DraftState;
   onPatch: (p: Partial<DraftState>) => void;
+  campaignId: string | null;
+  onNeedCampaign: () => Promise<string | null>;
 }) {
   const previewTabs = draft.channels.length
     ? draft.channels
@@ -924,17 +963,11 @@ function StepCreative({
         What will prospects see?
       </h2>
 
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={secondaryBtn}>
-          Upload Video
-        </button>
-        <button type="button" className={secondaryBtn}>
-          Upload Image
-        </button>
-        <button type="button" className={secondaryBtn}>
-          Choose Existing Creative
-        </button>
-      </div>
+      <CreativeMediaPanel
+        campaignId={campaignId}
+        channels={draft.channels}
+        onNeedCampaign={onNeedCampaign}
+      />
 
       <div className="flex gap-2">
         {(["A", "B"] as const).map((v) => (
@@ -1455,6 +1488,3 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const inputClass =
   "mt-1 w-full min-h-11 rounded-[8px] border border-[var(--altus-border)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--altus-blue)]";
-
-const secondaryBtn =
-  "min-h-11 rounded-md border border-[var(--altus-border)] px-4 py-2 text-sm font-semibold";
