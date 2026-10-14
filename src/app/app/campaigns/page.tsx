@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { SimCampaign } from "@/application/growth/simulationStore";
+import { safeCampaignAnalytics } from "@/application/growth/workspaceView";
 
 type StatePayload = {
   campaigns: SimCampaign[];
@@ -13,10 +14,15 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/campaigns/state", { cache: "no-store" });
-    const json = (await res.json()) as StatePayload;
-    setCampaigns(json.campaigns);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/campaigns/state", { cache: "no-store" });
+      const json = (await res.json()) as StatePayload;
+      setCampaigns(json.campaigns ?? []);
+    } catch {
+      setCampaigns([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -115,12 +121,17 @@ export default function CampaignsPage() {
             </thead>
             <tbody>
               {campaigns.map((campaign) => {
+                const analytics = safeCampaignAnalytics(campaign);
+                const territories = Array.isArray(campaign.territories)
+                  ? campaign.territories
+                  : [];
+                const channels = Array.isArray(campaign.channels)
+                  ? campaign.channels
+                  : [];
                 const conv =
-                  campaign.analytics.leads > 0
+                  analytics.leads > 0
                     ? Math.round(
-                        (campaign.analytics.appointments /
-                          campaign.analytics.leads) *
-                          100,
+                        (analytics.appointments / analytics.leads) * 100,
                       )
                     : 0;
                 return (
@@ -133,17 +144,17 @@ export default function CampaignsPage() {
                         ? "Platform"
                         : "Subscriber"}
                     </td>
-                    <td className="px-3 py-3">{campaign.strategy}</td>
-                    <td className="px-3 py-3">{campaign.territories.join(", ")}</td>
-                    <td className="px-3 py-3">{campaign.channels.join(", ")}</td>
+                    <td className="px-3 py-3">{campaign.strategy ?? "—"}</td>
+                    <td className="px-3 py-3">{territories.join(", ") || "—"}</td>
+                    <td className="px-3 py-3">{channels.join(", ") || "—"}</td>
                     <td className="px-3 py-3">
                       <span className="rounded-full bg-[var(--altus-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--altus-blue)]">
                         {String(campaign.status).replaceAll("_", " ")}
                       </span>
                     </td>
-                    <td className="px-3 py-3">{campaign.analytics.leads}</td>
-                    <td className="px-3 py-3">{campaign.analytics.qualified_leads}</td>
-                    <td className="px-3 py-3">{campaign.analytics.appointments}</td>
+                    <td className="px-3 py-3">{analytics.leads}</td>
+                    <td className="px-3 py-3">{analytics.qualified_leads}</td>
+                    <td className="px-3 py-3">{analytics.appointments}</td>
                     <td className="px-3 py-3">{conv}%</td>
                     <td className="px-3 py-3 text-xs">
                       {new Date(campaign.created_at).toLocaleDateString()}

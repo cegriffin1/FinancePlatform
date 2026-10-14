@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SimCampaign, SimLead } from "@/application/growth/simulationStore";
+import {
+  leadFullName,
+  leadShortName,
+  safeCampaignAnalytics,
+} from "@/application/growth/workspaceView";
 import { cn } from "@/lib/cn";
 
 type HomePayload = {
@@ -39,15 +44,21 @@ export default function AgentHomePage() {
     void Promise.all([
       fetch("/api/crm").then((r) => r.json()),
       fetch("/api/campaigns/state").then((r) => r.json()),
-    ]).then(([crm, state]) => {
-      setData(crm.home);
-      setCampaigns(state.campaigns ?? []);
-      setLeads(state.leads ?? []);
-      setLoading(false);
-    });
+    ])
+      .then(([crm, state]) => {
+        setData(crm?.home ?? null);
+        setCampaigns(state?.campaigns ?? []);
+        setLeads(state?.leads ?? []);
+      })
+      .catch(() => {
+        setData(null);
+        setCampaigns([]);
+        setLeads([]);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="space-y-4" aria-busy="true">
         <div className="h-28 animate-pulse rounded-[16px] bg-[var(--altus-soft)]" />
@@ -60,6 +71,17 @@ export default function AgentHomePage() {
           ))}
         </div>
         <p className="text-sm text-[var(--altus-text-secondary)]">Loading workspace…</p>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="rounded-[12px] border border-[var(--altus-border)] bg-white p-6 text-sm">
+        <p className="font-bold text-[var(--altus-text)]">Unable to load workspace</p>
+        <p className="mt-1 text-[var(--altus-text-secondary)]">
+          Refresh the page or open Campaigns / Leads from the sidebar.
+        </p>
       </div>
     );
   }
@@ -191,13 +213,15 @@ export default function AgentHomePage() {
           </div>
         ) : (
           <ul className="mt-3 divide-y divide-[var(--altus-border)]">
-            {campaigns.slice(0, 5).map((c) => (
+            {campaigns.slice(0, 5).map((c) => {
+              const analytics = safeCampaignAnalytics(c);
+              return (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
                 <div>
                   <div className="font-semibold">{c.name}</div>
                   <div className="text-xs text-[var(--altus-text-secondary)]">
                     {String(c.status).replaceAll("_", " ")} ·{" "}
-                    {c.analytics.leads} leads · {c.analytics.hot_leads} hot
+                    {analytics.leads} leads · {analytics.hot_leads} hot
                   </div>
                 </div>
                 <Link
@@ -207,7 +231,8 @@ export default function AgentHomePage() {
                   Health →
                 </Link>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>
@@ -250,14 +275,14 @@ export default function AgentHomePage() {
                       {lead.operational_temperature ?? lead.temperature_key}
                     </span>
                     <span className="text-[10px] font-semibold uppercase text-[var(--altus-text-secondary)]">
-                      {lead.attribution.ad_provider ?? lead.attribution.source ?? "—"}
+                      {lead.attribution?.ad_provider ?? lead.attribution?.source ?? "—"}
                     </span>
                   </div>
                   <h3 className="mt-1 text-lg font-bold">
-                    {lead.first_name} {lead.last_name.charAt(0)}.
+                    {leadShortName(lead)}
                   </h3>
                   <p className="text-sm text-[var(--altus-text-secondary)]">
-                    {lead.assessment_answers.repositionable_assets ?? "—"}
+                    {lead.assessment_answers?.repositionable_assets ?? "—"}
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-[var(--altus-blue)]">
@@ -325,14 +350,14 @@ export default function AgentHomePage() {
                         </span>
                       </div>
                       <h3 className="mt-2 text-lg font-bold">
-                        {lead.first_name} {lead.last_name}
+                        {leadFullName(lead)}
                       </h3>
                       <p className="text-sm text-[var(--altus-text-secondary)]">
-                        {lead.state} ·{" "}
+                        {lead.state ?? "—"} ·{" "}
                         {q?.asset.repositionable_asset_band ??
-                          lead.assessment_answers.repositionable_assets ??
+                          lead.assessment_answers?.repositionable_assets ??
                           "Assets —"}{" "}
-                        · {lead.assessment_answers.decision_timeline ?? "—"}
+                        · {lead.assessment_answers?.decision_timeline ?? "—"}
                       </p>
                     </div>
                     <div className="text-right">
