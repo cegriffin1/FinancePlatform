@@ -11,8 +11,15 @@ export function LoginForm({ configured }: { configured: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+
+  function passwordSetupRedirectTo(): string {
+    const origin = window.location.origin;
+    return `${origin}/auth/callback?next=${encodeURIComponent("/auth/set-password")}`;
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,6 +29,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
     }
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
       const supabase = createSupabaseBrowserClient();
       const { error: signError } = await supabase.auth.signInWithPassword({
@@ -29,7 +37,9 @@ export function LoginForm({ configured }: { configured: boolean }) {
         password,
       });
       if (signError) {
-        setError("Invalid email or password.");
+        setError(
+          "Invalid email or password. If you were invited and never set a password, use “Email me a password setup link” below.",
+        );
         setLoading(false);
         return;
       }
@@ -41,13 +51,44 @@ export function LoginForm({ configured }: { configured: boolean }) {
     }
   }
 
+  async function onPasswordSetupEmail() {
+    if (!configured) return;
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Enter your email address first, then request a password setup link.");
+      return;
+    }
+    setResetLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        trimmed,
+        { redirectTo: passwordSetupRedirectTo() },
+      );
+      if (resetError) {
+        setError(
+          "Unable to send the password setup email. Confirm the address and try again in a minute.",
+        );
+      } else {
+        setInfo(
+          "If that email has an ALTUS account, a password setup link is on the way. Check inbox and spam.",
+        );
+      }
+    } catch {
+      setError("Unable to send the password setup email. Please try again.");
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
   async function onSignOut() {
     if (!configured) return;
     setSigningOut(true);
     try {
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
-      router.refresh();
     } finally {
       setSigningOut(false);
     }
@@ -83,11 +124,24 @@ export function LoginForm({ configured }: { configured: boolean }) {
             {error}
           </p>
         ) : null}
+        {info ? (
+          <p className="text-sm text-[var(--ink-muted)]" role="status">
+            {info}
+          </p>
+        ) : null}
         <Button type="submit" disabled={loading || !configured} className="w-full">
           {loading ? "Signing in…" : "Sign in"}
         </Button>
       </form>
       <div className="flex flex-wrap gap-3">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!configured || resetLoading}
+          onClick={() => void onPasswordSetupEmail()}
+        >
+          {resetLoading ? "Sending…" : "Email me a password setup link"}
+        </Button>
         <Button
           type="button"
           variant="ghost"

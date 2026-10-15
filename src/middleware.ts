@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { PASSWORD_SETUP_COOKIE } from "@/lib/auth/password-setup";
 
 /**
  * Session refresh + internal route protection.
@@ -54,6 +55,21 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const passwordSetupPending =
+    request.cookies.get(PASSWORD_SETUP_COOKIE)?.value === "1";
+
+  // Invite/recovery sessions must finish password setup before workspace access.
+  if (
+    user &&
+    passwordSetupPending &&
+    !pathname.startsWith("/auth/set-password") &&
+    !pathname.startsWith("/auth/callback") &&
+    !pathname.startsWith("/auth/password-setup") &&
+    !pathname.startsWith("/auth/error")
+  ) {
+    return NextResponse.redirect(new URL("/auth/set-password", request.url));
+  }
+
   if (isInternal && !user) {
     const login = new URL("/login", request.url);
     login.searchParams.set("next", pathname);
@@ -61,6 +77,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/login" && user) {
+    if (passwordSetupPending) {
+      return NextResponse.redirect(new URL("/auth/set-password", request.url));
+    }
     return NextResponse.redirect(new URL("/app", request.url));
   }
 

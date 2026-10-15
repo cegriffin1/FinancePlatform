@@ -1,9 +1,16 @@
 import { Card } from "@/components/ui/Card";
 import { hasSupabaseConfig } from "@/lib/env";
 import { LoginForm } from "@/app/login/LoginForm";
+import { AuthLinkBridge } from "@/app/login/AuthLinkBridge";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ password_set?: string }>;
+}) {
   const configured = hasSupabaseConfig();
+  const params = await searchParams;
+  const passwordSet = params.password_set === "1";
 
   return (
     <div className="mx-auto flex min-h-screen max-w-lg items-center px-6 py-16">
@@ -17,6 +24,11 @@ export default function LoginPage() {
         <p className="mt-3 text-sm text-[var(--ink-muted)]">
           Sign in with your ALTUS organization credentials to access the workspace.
         </p>
+        {passwordSet ? (
+          <p className="mt-4 rounded-2xl border border-[var(--line)] bg-white/70 p-4 text-sm">
+            Password saved. Sign in with your email and new password.
+          </p>
+        ) : null}
         <div className="mt-4 rounded-2xl border border-[var(--line)] bg-white/70 p-4 text-sm">
           Status:{" "}
           <strong>
@@ -24,6 +36,7 @@ export default function LoginPage() {
           </strong>
         </div>
         <div className="mt-6">
+          <AuthLinkBridge configured={configured} />
           <LoginForm configured={configured} />
         </div>
       </Card>
