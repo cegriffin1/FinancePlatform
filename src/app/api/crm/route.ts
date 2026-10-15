@@ -10,13 +10,56 @@ import {
   CRM_FOLLOW_UP_TYPES,
 } from "@/domain/types/retirement-crm";
 import { requireOrgAuth, assertSameOrganization } from "@/infrastructure/security/requireOrgAuth";
+import { createSupabaseServiceClient } from "@/infrastructure/supabase/admin";
+import { isSupabaseDataMode } from "@/lib/dataMode";
+import { logAltusError } from "@/lib/observability";
+import { mapDurableLead } from "@/application/growth/durableWorkspace";
+import type { SimLead } from "@/application/growth/simulationStore";
 
 export async function GET() {
   const auth = await requireOrgAuth({ permission: "leads.view_own" });
   if (!auth.ok) return auth.response;
 
-  const store = getSimStore();
   const orgId = auth.ctx.organizationId;
+  const crm = new RetirementCrmService();
+
+  // Durable org-scoped CRM home when in supabase / production mode
+  if (isSupabaseDataMode() && orgId) {
+    try {
+      const supabase = createSupabaseServiceClient();
+      const { data: rows, error } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+
+      const leads = (rows ?? []).map((row) =>
+        mapDurableLead(row),
+      ) as unknown as SimLead[];
+      const home = crm.buildAgentHome(leads, "Advisor");
+      const followUps = crm.groupFollowUps(leads);
+      return NextResponse.json({
+        home,
+        followUps,
+        leads,
+        ownership_config: getSimStore().ownership_config,
+        pipeline_stages: PIPELINE_STAGES,
+        dataMode: "supabase",
+      });
+    } catch (e) {
+      logAltusError("DATABASE_ERROR", "Failed to load durable CRM home", {
+        reason: e instanceof Error ? e.message : "unknown",
+      });
+      return NextResponse.json(
+        { error: "Unable to load CRM workspace", code: "DATABASE_ERROR" },
+        { status: 503 },
+      );
+    }
+  }
+
+  const store = getSimStore();
   const leads = orgId
     ? store.leads.filter(
         (l) =>
@@ -25,7 +68,6 @@ export async function GET() {
           !l.organization_id,
       )
     : store.leads;
-  const crm = new RetirementCrmService();
   const home = crm.buildAgentHome(leads, "Advisor");
   const followUps = crm.groupFollowUps(leads);
   return NextResponse.json({
@@ -34,6 +76,7 @@ export async function GET() {
     leads,
     ownership_config: store.ownership_config,
     pipeline_stages: PIPELINE_STAGES,
+    dataMode: "simulation",
   });
 }
 

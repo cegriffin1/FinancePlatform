@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import {
   DEFAULT_LIFECYCLE_CONFIG,
   type LeadEngagementEvent,
@@ -13,6 +12,7 @@ import {
 import type { SimLead } from "@/application/growth/simulationStore";
 import { getSimStore } from "@/application/growth/simulationStore";
 import { LeadComplianceService } from "@/application/inventory/LeadComplianceService";
+import { createId } from "@/lib/safeId";
 
 function nowIso(now = Date.now()) {
   return new Date(now).toISOString();
@@ -30,7 +30,7 @@ function appendDomainEvent(
 ) {
   const store = getSimStore();
   store.events.push({
-    id: randomUUID(),
+    id: createId(),
     organization_id:
       lead.assigned_organization_id ??
       lead.organization_id ??
@@ -90,7 +90,7 @@ function maybeNotify(
   if (recent) return;
 
   store.notifications.push({
-    id: randomUUID(),
+    id: createId(),
     organization_id: orgId,
     lead_id: lead.id,
     title,
@@ -130,7 +130,7 @@ export class LeadEngagementService {
   ): LeadEngagementEvent {
     const meaningful = opts.meaningful ?? true;
     const event: LeadEngagementEvent = {
-      id: randomUUID(),
+      id: createId(),
       lead_id: lead.id,
       type,
       meaningful,
@@ -196,7 +196,7 @@ export class LeadTemperatureTransitionService {
       return lead.temperature_snapshots![lead.temperature_snapshots!.length - 1]!;
     }
     const snap: LeadTemperatureSnapshot = {
-      id: randomUUID(),
+      id: createId(),
       lead_id: lead.id,
       temperature: next,
       temperature_score: opts.temperature_score ?? null,

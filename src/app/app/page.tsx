@@ -8,6 +8,7 @@ import {
   leadShortName,
   safeCampaignAnalytics,
 } from "@/application/growth/workspaceView";
+import { countActiveCampaigns } from "@/application/growth/durableWorkspace";
 import { cn } from "@/lib/cn";
 
 type HomePayload = {
@@ -86,11 +87,7 @@ export default function AgentHomePage() {
     );
   }
 
-  const activeCampaigns = campaigns.filter((c) =>
-    ["active_simulation", "approved", "active", "scheduled"].includes(
-      String(c.status),
-    ),
-  ).length;
+  const activeCampaigns = countActiveCampaigns(campaigns);
   const recyclingSoon = leads.filter((l) => {
     const days =
       l.days_since_meaningful_interaction ??
@@ -121,10 +118,7 @@ export default function AgentHomePage() {
       <div className="rounded-[16px] border border-[var(--altus-border)] bg-[linear-gradient(135deg,#003d75,#0074C8_55%,#4ea3e0)] px-5 py-6 text-white shadow-[var(--altus-shadow)] sm:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[11px] font-semibold tracking-[0.18em] text-white/75">
-              GOOD MORNING
-            </p>
-            <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl tracking-tight sm:text-4xl">
+            <h1 className="font-[family-name:var(--font-display)] text-3xl tracking-tight sm:text-4xl">
               {data.greeting}
             </h1>
             <p className="mt-2 max-w-xl text-sm text-white/85">

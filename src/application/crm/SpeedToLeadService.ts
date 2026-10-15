@@ -7,7 +7,7 @@ import type { SimLead } from "@/application/growth/simulationStore";
 import { getSimStore } from "@/application/growth/simulationStore";
 import { toOperationalTemperature } from "@/domain/types/lead-lifecycle";
 import { getLifecycleConfig } from "@/application/lifecycle/LeadLifecycleService";
-import { randomUUID } from "crypto";
+import { createId } from "@/lib/safeId";
 
 export const SLA_STATES = [
   "ON_TRACK",
@@ -260,7 +260,7 @@ export class SpeedToLeadService {
     snap.history = [
       ...(snap.history ?? []),
       {
-        id: randomUUID(),
+        id: createId(),
         state,
         at: new Date().toISOString(),
         note,
@@ -277,11 +277,15 @@ export class NextBestActionService {
     const speed = new SpeedToLeadService();
     const snap = speed.refresh(lead);
     const temp = operationalTemp(lead);
-    const a = lead.assessment_answers;
+    const a =
+      lead.assessment_answers && typeof lead.assessment_answers === "object"
+        ? lead.assessment_answers
+        : {};
     const score =
       lead.aging?.original_score ??
       lead.qualification?.opportunity.opportunity_score ??
-      lead.score;
+      lead.score ??
+      0;
     const reasons: string[] = [];
 
     if (score >= 80) reasons.push(`High Opportunity Score (${score})`);
@@ -355,19 +359,21 @@ export function issueHotLeadAlert(lead: SimLead) {
     lead.aging?.original_score ??
     lead.qualification?.opportunity.opportunity_score ??
     lead.score;
+  const answers =
+    a && typeof a === "object" ? a : ({} as SimLead["assessment_answers"]);
   const notification = {
-    id: randomUUID(),
+    id: createId(),
     organization_id: orgId,
     lead_id: lead.id,
     title: "NEW HOT OPPORTUNITY",
     body: [
-      a.repositionable_assets
-        ? `${a.repositionable_assets} Potentially Repositionable`
+      answers.repositionable_assets
+        ? `${answers.repositionable_assets} Potentially Repositionable`
         : null,
       `Opportunity Score ${score}`,
-      a.retirement_timing ? `Retiring ${a.retirement_timing}` : null,
-      a.decision_timeline ? `Decision ${a.decision_timeline}` : null,
-      `Source ${lead.attribution.ad_provider ?? lead.attribution.source ?? "Campaign"}`,
+      answers.retirement_timing ? `Retiring ${answers.retirement_timing}` : null,
+      answers.decision_timeline ? `Decision ${answers.decision_timeline}` : null,
+      `Source ${lead.attribution?.ad_provider ?? lead.attribution?.source ?? "Campaign"}`,
     ]
       .filter(Boolean)
       .join(" · "),

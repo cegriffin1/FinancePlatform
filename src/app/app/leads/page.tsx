@@ -12,6 +12,13 @@ import {
   NextBestActionService,
   SpeedToLeadService,
 } from "@/application/crm/SpeedToLeadService";
+import {
+  leadAnswer,
+  leadDisplayInitial,
+  leadMatchesQuery,
+  leadSourceLabel,
+  operationalTemperatureOf,
+} from "@/application/crm/leadCommandCenterView";
 
 type TempTab =
   | "ALL"
@@ -47,11 +54,7 @@ type BuiltInView =
   | "unassigned";
 
 function operationalOf(lead: SimLead): OperationalTemperature {
-  if (lead.operational_temperature) return lead.operational_temperature;
-  const key = lead.temperature_key;
-  if (key === "COLD") return "COLD";
-  if (key === "WARM" || key === "MEDIUM") return "MEDIUM";
-  return "HOT";
+  return operationalTemperatureOf(lead);
 }
 
 function opportunityScore(lead: SimLead) {
@@ -111,8 +114,8 @@ function hasAppointmentToday(lead: SimLead) {
 
 function assetRank(lead: SimLead) {
   const band =
-    lead.assessment_answers.repositionable_assets ??
-    lead.qualification?.asset.repositionable_asset_band ??
+    leadAnswer(lead, "repositionable_assets") ??
+    lead.qualification?.asset?.repositionable_asset_band ??
     "";
   if (/\$1M|\$2M|\$5M/i.test(band)) return 5;
   if (/\$750K/i.test(band)) return 4;
@@ -221,11 +224,7 @@ export default function LeadCommandCenterPage() {
     }
     if (channelFilter) {
       list = list.filter((l) => {
-        const src = (
-          l.attribution.ad_provider ??
-          l.attribution.source ??
-          ""
-        ).toLowerCase();
+        const src = leadSourceLabel(l).toLowerCase();
         return src.includes(channelFilter.toLowerCase());
       });
     }
@@ -264,16 +263,8 @@ export default function LeadCommandCenterPage() {
       list = list.filter(isRecyclingSoon);
     }
 
-    const q = query.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (l) =>
-          l.first_name.toLowerCase().includes(q) ||
-          l.last_name.toLowerCase().includes(q) ||
-          l.email.toLowerCase().includes(q) ||
-          l.phone.includes(q) ||
-          l.business_name.toLowerCase().includes(q),
-      );
+    if (query.trim()) {
+      list = list.filter((l) => leadMatchesQuery(l, query));
     }
 
     const speed = new SpeedToLeadService();
@@ -600,13 +591,15 @@ function LeadRow({
   const speed = new SpeedToLeadService();
   const countdown = speed.formatCountdown(lead);
   const nba = new NextBestActionService().recommend(lead);
-  const meta = TAB_META[temp];
+  const meta = TAB_META[temp] ?? TAB_META.HOT;
+  const initial = leadDisplayInitial(lead);
 
   return (
     <tr className="border-t border-[var(--altus-border)]">
       <td className="px-4 py-3">
         <div className="font-bold">
-          {lead.first_name} {lead.last_name.charAt(0)}.
+          {lead.first_name || "Lead"}
+          {initial ? ` ${initial}.` : ""}
         </div>
         <div className="text-xs text-[var(--altus-text-secondary)]">
           Last: {timeAgo(lead.last_meaningful_interaction_at ?? lead.created_at)}
@@ -627,19 +620,17 @@ function LeadRow({
       </td>
       <td className="px-3 py-3 text-xs">
         <div>
-          {lead.assessment_answers.repositionable_assets ??
-            lead.qualification?.asset.repositionable_asset_band ??
+          {leadAnswer(lead, "repositionable_assets") ??
+            lead.qualification?.asset?.repositionable_asset_band ??
             "—"}
         </div>
         <div className="text-[var(--altus-text-secondary)]">
-          {lead.assessment_answers.primary_objective ?? "—"} ·{" "}
-          {lead.assessment_answers.decision_timeline ?? "—"}
+          {leadAnswer(lead, "primary_objective") ?? "—"} ·{" "}
+          {leadAnswer(lead, "decision_timeline") ?? "—"}
         </div>
       </td>
       <td className="px-3 py-3 text-xs">
-        <div>
-          {lead.attribution.ad_provider ?? lead.attribution.source ?? "—"}
-        </div>
+        <div>{leadSourceLabel(lead)}</div>
         <div className="text-[var(--altus-text-secondary)]">{campaignLabel}</div>
       </td>
       <td className="px-3 py-3 text-xs">
@@ -671,9 +662,10 @@ function LeadCard({
   campaignLabel: string;
 }) {
   const temp = operationalOf(lead);
-  const meta = TAB_META[temp];
+  const meta = TAB_META[temp] ?? TAB_META.HOT;
   const countdown = new SpeedToLeadService().formatCountdown(lead);
   const nba = new NextBestActionService().recommend(lead);
+  const initial = leadDisplayInitial(lead);
 
   return (
     <article className="rounded-[12px] border border-[var(--altus-border)] bg-white p-4 shadow-[var(--altus-shadow)]">
@@ -683,7 +675,8 @@ function LeadCard({
             {meta.icon} {temp}
           </span>
           <h2 className="mt-2 text-xl font-bold">
-            {lead.first_name} {lead.last_name.charAt(0)}.
+            {lead.first_name || "Lead"}
+            {initial ? ` ${initial}.` : ""}
           </h2>
         </div>
         <div className="text-right">
@@ -696,15 +689,15 @@ function LeadCard({
         </div>
       </div>
       <p className="mt-2 text-sm">
-        {lead.assessment_answers.repositionable_assets ?? "Assets —"} Potentially
+        {leadAnswer(lead, "repositionable_assets") ?? "Assets —"} Potentially
         Repositionable
       </p>
       <p className="text-sm text-[var(--altus-text-secondary)]">
-        Goal: {lead.assessment_answers.primary_objective ?? "—"} · Decision:{" "}
-        {lead.assessment_answers.decision_timeline ?? "—"}
+        Goal: {leadAnswer(lead, "primary_objective") ?? "—"} · Decision:{" "}
+        {leadAnswer(lead, "decision_timeline") ?? "—"}
       </p>
       <p className="mt-2 text-xs text-[var(--altus-text-secondary)]">
-        Source: {lead.attribution.ad_provider ?? "—"} · {campaignLabel}
+        Source: {leadSourceLabel(lead)} · {campaignLabel}
       </p>
       <p className="text-xs text-[var(--altus-text-secondary)]">
         Assigned:{" "}

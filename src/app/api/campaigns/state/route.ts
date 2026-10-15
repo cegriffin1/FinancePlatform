@@ -4,6 +4,10 @@ import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 import { createSupabaseServiceClient } from "@/infrastructure/supabase/admin";
 import { isSupabaseDataMode } from "@/lib/dataMode";
 import { logAltusError } from "@/lib/observability";
+import {
+  enrichCampaignsWithLeadCounts,
+  mapDurableLead,
+} from "@/application/growth/durableWorkspace";
 
 export async function GET() {
   const auth = await requireOrgAuth({ permission: "leads.view_own" });
@@ -13,7 +17,7 @@ export async function GET() {
   if (isSupabaseDataMode() && auth.ctx.organizationId) {
     try {
       const supabase = createSupabaseServiceClient();
-      const { data: leads, error } = await supabase
+      const { data: leadRows, error } = await supabase
         .from("leads")
         .select("*")
         .eq("organization_id", auth.ctx.organizationId)
@@ -21,23 +25,21 @@ export async function GET() {
         .limit(500);
       if (error) throw error;
 
-      const { data: campaigns } = await supabase
+      const { data: campaignRows } = await supabase
         .from("campaigns")
         .select("*")
         .eq("organization_id", auth.ctx.organizationId)
         .limit(200);
 
+      const leads = (leadRows ?? []).map((l) => mapDurableLead(l));
+      const campaigns = enrichCampaignsWithLeadCounts(
+        campaignRows ?? [],
+        leads,
+      );
+
       return NextResponse.json({
-        campaigns: campaigns ?? [],
-        leads: (leads ?? []).map((l) => ({
-          ...l,
-          // Map durable columns into Command Center expectations
-          operational_temperature: l.operational_temperature,
-          temperature_key: l.temperature_key ?? l.operational_temperature,
-          score: l.opportunity_score ?? l.score,
-          assessment_answers: l.assessment_answers ?? {},
-          attribution: l.attribution ?? {},
-        })),
+        campaigns,
+        leads,
         events: [],
         notifications: [],
         organizations: [
@@ -78,7 +80,7 @@ export async function GET() {
     : store.campaigns;
 
   return NextResponse.json({
-    campaigns,
+    campaigns: enrichCampaignsWithLeadCounts(campaigns, leads),
     leads,
     events: store.events.filter(
       (e) => !orgId || e.organization_id === orgId || !e.organization_id,
