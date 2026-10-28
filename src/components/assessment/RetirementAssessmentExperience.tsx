@@ -1,13 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { RetirementAssessmentEngine } from "@/application/retirement/RetirementAssessmentEngine";
-import { AltusMark } from "@/components/brand/AltusLogo";
+import { AppointmentPreferenceForm } from "@/components/assessment/AppointmentPreferenceForm";
+import { HighwaterResultsPanel } from "@/components/assessment/HighwaterResultsPanel";
+import { HighwaterMark } from "@/components/brand/HighwaterMark";
 import { cn } from "@/lib/cn";
+import { HIGHWATER_BRAND } from "@/domain/brand/highwater";
 import {
-  PUBLIC_CONSENT_TEXT,
-  PUBLIC_CONSENT_VERSION,
+  HIGHWATER_CONSENT_EDUCATION_TEXT,
+  HIGHWATER_CONSENT_MARKETING_TEXT,
+  HIGHWATER_CONSENT_MATCHING_SHARE_TEXT,
+  HIGHWATER_CONSENT_PRIVACY_NOTE,
+  HIGHWATER_PUBLIC_CONSENT_VERSION,
 } from "@/domain/compliance/consent";
 
 export type RetirementAssessmentProps = {
@@ -26,6 +31,7 @@ type Phase =
   | "questions"
   | "contact"
   | "analyzing"
+  | "results"
   | "done";
 
 type ConsumerProfile = {
@@ -103,8 +109,15 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
   const [resumeToken, setResumeToken] = useState<string | null>(null);
   const [startedAt] = useState(() => new Date().toISOString());
   const [appointmentRequested, setAppointmentRequested] = useState(false);
+  const [appointmentConfirmedMessage, setAppointmentConfirmedMessage] =
+    useState<string | null>(null);
+  const [preferredContact, setPreferredContact] = useState("Phone");
   const [submitting, setSubmitting] = useState(false);
+  const [appointmentSubmitting, setAppointmentSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appointmentError, setAppointmentError] = useState<string | null>(null);
+  const brandName =
+    props.brandingName?.trim() || HIGHWATER_BRAND.name;
   const [honeypot, setHoneypot] = useState("");
   const [restored, setRestored] = useState(false);
   const [sliderDraft, setSliderDraft] = useState("5");
@@ -361,22 +374,25 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
     setAnswers(nextAnswers);
   }
 
-  async function submit(
-    contact: {
-      firstName: string;
-      lastName: string;
-      email: string;
-      phone: string;
-      state: string;
-      preferredContact: string;
-      consent: boolean;
-    },
-    requestAppointment: boolean,
-  ) {
+  async function submit(contact: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    state: string;
+    preferredContact: string;
+    consentEducation: boolean;
+    consentMarketing: boolean;
+    consentMatchingShare: boolean;
+  }) {
     if (!sessionId || !resumeToken || !sessionReady) {
       setError(
         "Assessment session is not ready. Please retry starting the assessment.",
       );
+      return;
+    }
+    if (!contact.consentEducation) {
+      setError("Please acknowledge the educational information notice to continue.");
       return;
     }
     setSubmitting(true);
@@ -390,10 +406,20 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
           campaignSlug: props.campaignSlug,
           answers,
           contact: {
-            ...contact,
+            firstName: contact.firstName,
+            lastName: contact.lastName,
+            email: contact.email,
+            phone: contact.phone,
+            state: contact.state,
+            preferredContact: contact.preferredContact,
             businessName: `${contact.firstName} ${contact.lastName}`.trim(),
+            consent: true,
+            consentEducation: contact.consentEducation,
+            consentMarketing: contact.consentMarketing,
+            consentMatchingShare: contact.consentMatchingShare,
           },
-          appointmentRequested: requestAppointment,
+          // Appointment preference is optional and collected after results.
+          appointmentRequested: false,
           attribution: readAttribution(props.trafficSource),
           sessionId,
           resumeToken,
@@ -405,7 +431,8 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
       if (!response.ok) throw new Error(json.error ?? "Submission failed");
       setProfile(json.consumerProfile ?? engine.consumerProfile(answers));
       setLeadId(json.leadId ?? null);
-      setAppointmentRequested(requestAppointment);
+      setPreferredContact(contact.preferredContact);
+      setAppointmentRequested(false);
       setPhase("analyzing");
       try {
         sessionStorage.removeItem(
@@ -414,7 +441,7 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
       } catch {
         // ignore
       }
-      window.setTimeout(() => setPhase("done"), 1600);
+      window.setTimeout(() => setPhase("results"), 1600);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed");
     } finally {
@@ -422,12 +449,67 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
     }
   }
 
+  async function submitAppointmentPreference(input: {
+    preferredDate: string;
+    preferredTime: string;
+    timeZone: string;
+    preferredContact: string;
+  }) {
+    if (!sessionId || !resumeToken || !leadId) {
+      setAppointmentError(
+        "Your assessment session is no longer available. Please restart the assessment.",
+      );
+      return;
+    }
+    setAppointmentSubmitting(true);
+    setAppointmentError(null);
+    try {
+      const response = await fetch("/api/public/appointment-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationSlug: props.organizationSlug,
+          campaignSlug: props.campaignSlug,
+          sessionId,
+          resumeToken,
+          leadId,
+          ...input,
+        }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        duplicate?: boolean;
+        confirmed?: boolean;
+      };
+      if (!response.ok) {
+        throw new Error(json.error ?? "Unable to submit appointment request");
+      }
+      setAppointmentRequested(true);
+      setAppointmentConfirmedMessage(
+        json.duplicate
+          ? "We already have your preferred time on file. This remains a request only — not a confirmed appointment."
+          : json.message ||
+              "Preference received. This is a request only — not a confirmed appointment.",
+      );
+      setPreferredContact(input.preferredContact);
+      setPhase("done");
+    } catch (err) {
+      setAppointmentError(
+        err instanceof Error ? err.message : "Unable to submit request",
+      );
+    } finally {
+      setAppointmentSubmitting(false);
+    }
+  }
+
   const progress = useMemo(() => {
     if (phase === "intro") return 4;
     if (phase === "bridge_money") return Math.max(8, stageMeta.percent);
     if (phase === "questions") return Math.max(8, stageMeta.percent);
-    if (phase === "contact") return 92;
-    if (phase === "analyzing") return 97;
+    if (phase === "contact") return 88;
+    if (phase === "analyzing") return 93;
+    if (phase === "results") return 97;
     return 100;
   }, [phase, stageMeta.percent]);
 
@@ -452,9 +534,9 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
         <header className="border-b border-[var(--altus-border)] bg-white/90 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-5">
             <div className="flex items-center gap-2">
-              <AltusMark className="h-7 w-7" />
+              <HighwaterMark className="h-7 w-7" />
               <div className="text-sm font-semibold tracking-wide">
-                {props.brandingName || "ALTUS"}
+                {brandName}
               </div>
             </div>
             <div className="text-xs font-semibold text-[var(--altus-text-secondary)]">
@@ -465,7 +547,10 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
       ) : null}
 
       <div className={mainClass}>
-        {phase !== "intro" && phase !== "done" && phase !== "analyzing" ? (
+        {phase !== "intro" &&
+        phase !== "done" &&
+        phase !== "results" &&
+        phase !== "analyzing" ? (
           <div className="mb-5">
             <div className="mb-2 flex items-center justify-between gap-3">
               <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--altus-blue)]">
@@ -513,17 +598,20 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
         {phase === "intro" && (
           <section className="rounded-[18px] bg-[linear-gradient(145deg,#003d73,#0074C8)] p-8 text-white shadow-[var(--altus-shadow)] md:p-10">
             <p className="text-[11px] font-semibold tracking-[0.16em] text-white/75">
-              ALTUS
+              {brandName.toUpperCase()}
+            </p>
+            <p className="mt-2 text-sm font-medium text-white/90">
+              {HIGHWATER_BRAND.positioning}
             </p>
             <p className="mt-3 text-[11px] font-bold tracking-[0.14em] text-white/85">
-              RETIREMENT OPPORTUNITY ASSESSMENT
+              {HIGHWATER_BRAND.assessmentLabel}
             </p>
             <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight md:text-4xl">
               Build Your Retirement Profile
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/90 md:text-base">
-              Discover how your retirement goals, timeline and priorities fit
-              together.
+              {HIGHWATER_BRAND.description} Discover how your retirement goals,
+              timeline, and priorities fit together — for education, not advice.
             </p>
             <p className="mt-3 text-sm font-semibold text-white/85">
               Takes approximately 2–4 minutes.
@@ -741,10 +829,11 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
               ANALYZING PROFILE
             </p>
             <h2 className="mt-3 text-2xl font-bold text-[var(--altus-text)]">
-              Building your Retirement Opportunity Profile…
+              Preparing your educational summary…
             </h2>
             <p className="mt-3 text-sm text-[var(--altus-text-secondary)]">
-              Reviewing your answers and preparing your personalized summary.
+              Reviewing your answers — this is educational information, not
+              personalized financial advice.
             </p>
             <div className="mx-auto mt-8 h-2 w-48 overflow-hidden rounded-full bg-[var(--altus-soft)]">
               <div className="h-full w-2/3 animate-pulse rounded-full bg-[var(--altus-blue)]" />
@@ -752,75 +841,47 @@ export function RetirementAssessmentExperience(props: RetirementAssessmentProps)
           </section>
         )}
 
+        {phase === "results" && profile && (
+          <HighwaterResultsPanel profile={profile}>
+            <AppointmentPreferenceForm
+              defaultContact={preferredContact}
+              submitting={appointmentSubmitting}
+              error={appointmentError}
+              onSubmit={submitAppointmentPreference}
+              onSkip={() => setPhase("done")}
+            />
+          </HighwaterResultsPanel>
+        )}
+
         {phase === "done" && profile && (
-          <section className="rounded-[16px] border border-[var(--altus-border)] bg-white p-8 shadow-[var(--altus-shadow)]">
-            <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--altus-blue)]">
-              ASSESSMENT RESULT
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-[var(--altus-text)]">
-              Your Retirement Opportunity Profile is ready
-            </h2>
-            <dl className="mt-6 space-y-4 text-sm">
-              <div>
-                <dt className="font-semibold text-[var(--altus-text-secondary)]">
-                  Primary Goal
-                </dt>
-                <dd className="mt-1 text-base font-bold">{profile.primary_goal ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-[var(--altus-text-secondary)]">
-                  Retirement
-                </dt>
-                <dd className="mt-1 text-base font-bold">
-                  {profile.retirement_timeline ?? "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-[var(--altus-text-secondary)]">
-                  Potentially Repositionable
-                </dt>
-                <dd className="mt-1 text-base font-bold">
-                  {profile.repositionable_band ?? "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-[var(--altus-text-secondary)]">
-                  Important Priorities
-                </dt>
-                <dd className="mt-1 space-y-1">
-                  {profile.important_priorities.length
-                    ? profile.important_priorities.map((p) => <div key={p}>{p}</div>)
-                    : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-[var(--altus-text-secondary)]">
-                  Planning Timeline
-                </dt>
-                <dd className="mt-1 text-base font-bold">
-                  {profile.planning_horizon ?? "—"}
-                </dd>
-              </div>
-            </dl>
-            {appointmentRequested ? (
-              <p className="mt-6 text-sm font-semibold text-[var(--altus-blue)]">
-                Conversation request received — a specialist will follow up.
+          <HighwaterResultsPanel profile={profile}>
+            <section className="rounded-[18px] border border-[var(--altus-border)] bg-white p-6 shadow-[var(--altus-shadow)] md:p-8">
+              <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--altus-blue)]">
+                THANK YOU
               </p>
-            ) : (
-              <p className="mt-6 text-sm text-[var(--altus-text-secondary)]">
-                {props.thankYou}
+              <h3 className="mt-2 text-xl font-bold text-[var(--altus-text)]">
+                {appointmentRequested
+                  ? "Appointment request received"
+                  : "Your educational summary is ready"}
+              </h3>
+              {appointmentRequested ? (
+                <p className="mt-3 text-sm font-semibold text-[var(--altus-blue)]">
+                  {appointmentConfirmedMessage ||
+                    "Preference received. This is a request only — not a confirmed appointment, and no advisor has been assigned yet."}
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-[var(--altus-text-secondary)]">
+                  {props.thankYou ||
+                    "Thanks — you can request a conversation anytime after reviewing your educational summary."}
+                </p>
+              )}
+              <p className="mt-4 text-xs leading-relaxed text-[var(--altus-text-secondary)]">
+                Highwater Capital will follow up using your preferred contact method
+                when appropriate. Matching depends on eligibility and consent — never
+                automatic assignment.
               </p>
-            )}
-            {leadId ? (
-              <p className="mt-4 text-xs text-[var(--altus-text-secondary)]">
-                Reference saved. Advisors can review this lead in{" "}
-                <Link className="font-semibold text-[var(--altus-blue)]" href="/app/leads">
-                  /app/leads
-                </Link>
-                .
-              </p>
-            ) : null}
-          </section>
+            </section>
+          </HighwaterResultsPanel>
         )}
       </div>
     </div>
@@ -834,38 +895,34 @@ function ContactForm({
   defaultState,
 }: {
   defaultState: string;
-  onSubmit: (
-    contact: {
-      firstName: string;
-      lastName: string;
-      email: string;
-      phone: string;
-      state: string;
-      preferredContact: string;
-      consent: boolean;
-    },
-    appointmentRequested: boolean,
-  ) => Promise<void>;
+  onSubmit: (contact: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    state: string;
+    preferredContact: string;
+    consentEducation: boolean;
+    consentMarketing: boolean;
+    consentMatchingShare: boolean;
+  }) => Promise<void>;
   submitting: boolean;
   error: string | null;
 }) {
-  const [wantAppointment, setWantAppointment] = useState(true);
-
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
-    await onSubmit(
-      {
-        firstName: String(form.get("firstName") ?? ""),
-        lastName: String(form.get("lastName") ?? ""),
-        email: String(form.get("email") ?? ""),
-        phone: String(form.get("phone") ?? ""),
-        state: String(form.get("state") ?? defaultState).toUpperCase(),
-        preferredContact: String(form.get("preferredContact") ?? "Phone"),
-        consent: form.get("consent") === "on",
-      },
-      wantAppointment,
-    );
+    await onSubmit({
+      firstName: String(form.get("firstName") ?? ""),
+      lastName: String(form.get("lastName") ?? ""),
+      email: String(form.get("email") ?? ""),
+      phone: String(form.get("phone") ?? ""),
+      state: String(form.get("state") ?? defaultState).toUpperCase(),
+      preferredContact: String(form.get("preferredContact") ?? "Phone"),
+      consentEducation: form.get("consentEducation") === "on",
+      consentMarketing: form.get("consentMarketing") === "on",
+      consentMatchingShare: form.get("consentMatchingShare") === "on",
+    });
   }
 
   return (
@@ -874,10 +931,10 @@ function ContactForm({
       onSubmit={(e) => void handleSubmit(e)}
     >
       <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--altus-blue)]">
-        YOUR RETIREMENT PROFILE IS READY
+        YOUR EDUCATIONAL SUMMARY IS READY
       </p>
       <h2 className="mt-2 text-xl font-bold text-[var(--altus-text)] md:text-2xl">
-        Tell us where to send your personalized summary.
+        Tell us where to send your Highwater Capital summary.
       </h2>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {[
@@ -918,38 +975,59 @@ function ContactForm({
           </select>
         </label>
       </div>
-      <label className="mt-4 flex items-start gap-3 text-sm text-[var(--altus-text-secondary)]">
-        <input required type="checkbox" name="consent" className="mt-1 h-5 w-5" />
-        <span>
-          {PUBLIC_CONSENT_TEXT}
-          <span className="mt-1 block text-[10px] uppercase tracking-wide">
-            Consent version {PUBLIC_CONSENT_VERSION}
+
+      <fieldset className="mt-5 space-y-3">
+        <legend className="text-sm font-bold text-[var(--altus-text)]">
+          Acknowledgments & optional permissions
+        </legend>
+        <p className="text-[10px] uppercase tracking-wide text-[var(--altus-text-secondary)]">
+          Consent version {HIGHWATER_PUBLIC_CONSENT_VERSION} · draft for legal review
+        </p>
+        <label className="flex items-start gap-3 text-sm text-[var(--altus-text-secondary)]">
+          <input
+            required
+            type="checkbox"
+            name="consentEducation"
+            className="mt-1 h-5 w-5 shrink-0"
+          />
+          <span>
+            <span className="font-semibold text-[var(--altus-text)]">Required. </span>
+            {HIGHWATER_CONSENT_EDUCATION_TEXT}
           </span>
-        </span>
-      </label>
+        </label>
+        <label className="flex items-start gap-3 text-sm text-[var(--altus-text-secondary)]">
+          <input
+            type="checkbox"
+            name="consentMarketing"
+            className="mt-1 h-5 w-5 shrink-0"
+          />
+          <span>{HIGHWATER_CONSENT_MARKETING_TEXT}</span>
+        </label>
+        <label className="flex items-start gap-3 text-sm text-[var(--altus-text-secondary)]">
+          <input
+            type="checkbox"
+            name="consentMatchingShare"
+            className="mt-1 h-5 w-5 shrink-0"
+          />
+          <span>{HIGHWATER_CONSENT_MATCHING_SHARE_TEXT}</span>
+        </label>
+        <p className="text-xs leading-relaxed text-[var(--altus-text-secondary)]">
+          {HIGHWATER_CONSENT_PRIVACY_NOTE}
+        </p>
+      </fieldset>
+
       {error ? (
         <p className="mt-3 text-sm text-red-700" role="alert">
           {error}
         </p>
       ) : null}
-      <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="min-h-12 rounded-md bg-[var(--altus-blue)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-          onClick={() => setWantAppointment(true)}
-        >
-          Schedule My Retirement Conversation
-        </button>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="min-h-12 rounded-md border border-[var(--altus-border)] px-4 py-3 text-sm font-semibold disabled:opacity-60"
-          onClick={() => setWantAppointment(false)}
-        >
-          Send my summary
-        </button>
-      </div>
+      <button
+        type="submit"
+        disabled={submitting}
+        className="mt-6 min-h-12 w-full rounded-md bg-[var(--altus-blue)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
+      >
+        {submitting ? "Saving…" : "View my educational summary"}
+      </button>
     </form>
   );
 }

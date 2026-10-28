@@ -82,7 +82,8 @@ export type LeadAppointment = {
   scheduled_at: string;
   preferred_contact_method: string;
   notes: string | null;
-  status: "scheduled" | "confirmed" | "cancelled" | "completed";
+  /** `requested` = consumer preferred time (not a confirmed booking). */
+  status: "requested" | "scheduled" | "confirmed" | "cancelled" | "completed";
   created_by: string | null;
   created_at: string;
 };

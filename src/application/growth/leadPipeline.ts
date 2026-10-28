@@ -25,8 +25,10 @@ import {
   issueHotLeadAlert,
 } from "@/application/crm/SpeedToLeadService";
 import {
-  PUBLIC_CONSENT_TEXT,
   PUBLIC_CONSENT_VERSION,
+  buildHighwaterConsentEvidence,
+  buildHighwaterConsentTextPresented,
+  serializeConsentEvidenceForStorage,
 } from "@/domain/compliance/consent";
 import { defaultCompliance } from "@/domain/types/lead-inventory";
 import { AltusCRMProvider } from "@/infrastructure/providers/AltusCRMProvider";
@@ -50,6 +52,14 @@ export type PublicLeadSubmission = {
     state: string;
     preferredContact: string;
     consent: boolean;
+    /** Required for Highwater v2.1 — educational disclaimer. */
+    consentEducation?: boolean;
+    /** @deprecated Use consentMarketing — treated as marketing opt-in when present. */
+    consentContact?: boolean;
+    /** Optional marketing / proactive follow-up. */
+    consentMarketing?: boolean;
+    /** Optional advisor matching / data sharing. */
+    consentMatchingShare?: boolean;
   };
   appointmentRequested: boolean;
   attribution: {
@@ -386,6 +396,10 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   }
 
   if (!input.contact.consent) throw new Error("Consent is required");
+  // Highwater v2.1: only education acknowledgment is required; matching/marketing optional.
+  if (input.contact.consentEducation === false) {
+    throw new Error("Educational acknowledgment is required");
+  }
   if (!input.contact.email.includes("@")) throw new Error("Valid email required");
 
   const sessions = new AssessmentSessionService();
@@ -609,17 +623,60 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   // Persist before downstream processing
   store.leads.unshift(lead);
   new LeadInventoryService().initializeOnCreate(lead);
+  const isHighwaterV2 =
+    input.contact.consentEducation != null ||
+    input.contact.consentMarketing != null ||
+    input.contact.consentContact != null ||
+    input.contact.consentMatchingShare != null;
   lead.compliance = defaultCompliance({
     consent: input.contact.consent,
     state: input.contact.state,
     capturedAt: now,
-    consentText: PUBLIC_CONSENT_TEXT,
+    // Legacy sim/MVP path still stamps active public version for audit continuity.
+    consentText: buildHighwaterConsentTextPresented({
+      educationAcknowledged: true,
+      marketingOptIn: true,
+      matchingShareOptIn: true,
+    }),
     consentVersion: PUBLIC_CONSENT_VERSION,
   });
+  if (isHighwaterV2) {
+    const educationOk = input.contact.consentEducation === true;
+    if (!educationOk) {
+      throw new Error("Educational acknowledgment is required");
+    }
+    const marketingOptIn =
+      input.contact.consentMarketing === true ||
+      input.contact.consentContact === true;
+    const matchingShare = input.contact.consentMatchingShare === true;
+    const choices = {
+      educationAcknowledged: true,
+      marketingOptIn,
+      matchingShareOptIn: matchingShare,
+    };
+    const evidence = buildHighwaterConsentEvidence({
+      choices,
+      capturedAt: now,
+      sessionId: input.sessionId ?? session?.id ?? null,
+      campaignId: campaign.id,
+      organizationId: org?.id ?? session?.organization_id ?? null,
+    });
+    // Transactional contact for delivering the consumer's own summary ≠ marketing.
+    lead.compliance.contact_consent = true;
+    lead.compliance.marketing_consent = marketingOptIn;
+    lead.compliance.data_sharing_permitted = matchingShare;
+    lead.compliance.resale_permitted = false;
+    lead.compliance.consent_version = PUBLIC_CONSENT_VERSION;
+    lead.compliance.consent_text = buildHighwaterConsentTextPresented(choices);
+    lead.compliance.consent_captured_at = now;
+    lead.compliance.consent_basis = "web_form_express_granular";
+    lead.compliance.sharing_permissions_note =
+      serializeConsentEvidenceForStorage(evidence);
+  }
   lead.preferred_communication = input.contact.preferredContact;
   appendEvent(leadId, campaign.id, org?.id ?? null, "lead_submitted", {
     source: input.attribution.ad_provider ?? input.attribution.source_channel,
-    consent_version: PUBLIC_CONSENT_VERSION,
+    consent_version: lead.compliance?.consent_version ?? null,
     // Never log raw email/phone
   });
   campaign.analytics.assessment_completions += 1;
@@ -675,16 +732,32 @@ export async function processPublicLeadSubmission(input: PublicLeadSubmission) {
   }
 
   const gate = lead.intelligence?.quality_gate;
+  const sharingPermitted = lead.compliance?.data_sharing_permitted === true;
   const canDistribute =
-    !gate ||
-    (gate === "ACCEPT" &&
-      lead.distribution_status !== "held" &&
-      lead.distribution_status !== "nurture" &&
-      lead.status !== "rejected" &&
-      lead.status !== "review" &&
-      lead.status !== "nurture");
+    sharingPermitted &&
+    (!gate ||
+      (gate === "ACCEPT" &&
+        lead.distribution_status !== "held" &&
+        lead.distribution_status !== "nurture" &&
+        lead.status !== "rejected" &&
+        lead.status !== "review" &&
+        lead.status !== "nurture"));
 
-  if (canDistribute) {
+  if (!sharingPermitted && isHighwaterV2) {
+    // Collecting org may retain the lead for education delivery/ops, but must not
+    // distribute or marketplace-share without matching consent.
+    lead.distribution_status = "held";
+    lead.routing_attention = "Held — advisor matching consent not granted";
+    lead.organization_id =
+      org?.id ??
+      session?.organization_id ??
+      campaign.organization_id ??
+      lead.organization_id;
+    appendEvent(leadId, campaign.id, lead.organization_id, "distribution_held", {
+      reason: "matching_share_consent_declined",
+      consent_version: lead.compliance?.consent_version ?? null,
+    });
+  } else if (canDistribute) {
     if (campaign.owner_type === "SUBSCRIBER_CAMPAIGN" && org) {
       lead.organization_id = org.id;
       lead.assigned_organization_id = org.id;

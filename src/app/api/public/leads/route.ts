@@ -16,7 +16,16 @@ const bodySchema = z.object({
     phone: z.string().min(7),
     state: z.string().min(2).max(2),
     preferredContact: z.string().min(1),
-    consent: z.literal(true),
+    /** Legacy single flag — Highwater path uses granular fields. */
+    consent: z.boolean().optional(),
+    /** Required educational acknowledgment. */
+    consentEducation: z.literal(true),
+    /** Optional marketing / proactive follow-up. */
+    consentMarketing: z.boolean().optional().default(false),
+    /** @deprecated Prefer consentMarketing. */
+    consentContact: z.boolean().optional(),
+    /** Optional advisor matching / information sharing. */
+    consentMatchingShare: z.boolean().optional().default(false),
   }),
   appointmentRequested: z.boolean().default(false),
   honeypot: z.string().optional().nullable(),
@@ -53,6 +62,11 @@ export async function POST(request: Request) {
 
     const json = await request.json();
     const parsed = bodySchema.parse(json);
+    const marketing =
+      parsed.contact.consentMarketing === true ||
+      parsed.contact.consentContact === true;
+    const matching = parsed.contact.consentMatchingShare === true;
+
     const result = await processPublicLeadSubmission({
       ...parsed,
       contact: {
@@ -60,6 +74,11 @@ export async function POST(request: Request) {
         businessName:
           parsed.contact.businessName ||
           `${parsed.contact.firstName} ${parsed.contact.lastName}`.trim(),
+        // Base consent = education acknowledged (required by schema).
+        consent: true,
+        consentEducation: true,
+        consentMarketing: marketing,
+        consentMatchingShare: matching,
       },
     });
     return NextResponse.json({
@@ -70,6 +89,8 @@ export async function POST(request: Request) {
       consumerProfile: result.consumerProfile,
       assignedOrganizationId: result.lead.assigned_organization_id,
       distributionStatus: result.lead.distribution_status,
+      matchingConsent: matching,
+      marketingConsent: marketing,
       poolSize: getSimStore().leads.length,
     });
   } catch (error) {

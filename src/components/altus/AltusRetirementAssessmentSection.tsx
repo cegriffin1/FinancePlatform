@@ -40,9 +40,9 @@ export function AltusRetirementAssessmentSection() {
           campaignSlug={DIRECT_RETIREMENT_CAMPAIGN_SLUG}
           thankYou={
             campaign.branding.thank_you_message ??
-            "Thanks — your retirement profile is ready."
+            "Thanks — your Highwater Capital educational summary is ready."
           }
-          brandingName="ALTUS"
+          brandingName="Highwater Capital"
           trafficSource="DIRECT_ASSESSMENT"
           embedded
         />

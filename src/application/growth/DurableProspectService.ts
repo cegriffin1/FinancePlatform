@@ -408,7 +408,9 @@ export class DurableProspectService {
           jurisdiction: lead.compliance.jurisdiction,
           consent_basis: lead.compliance.consent_basis,
           consent_captured_at: lead.compliance.consent_captured_at,
-          sharing_permissions_note: `consent_version=${lead.compliance.consent_version}`,
+          sharing_permissions_note:
+            lead.compliance.sharing_permissions_note ??
+            `consent_version=${lead.compliance.consent_version}`,
           updated_at: now,
         });
       }
@@ -429,8 +431,22 @@ export class DurableProspectService {
       })
       .eq("id", session.id);
 
-    // Audit
+    // Audit (include consent evidence summary — no raw contact PII)
     try {
+      let consentMeta: Record<string, unknown> | null = null;
+      if (lead.compliance?.sharing_permissions_note) {
+        try {
+          consentMeta = JSON.parse(lead.compliance.sharing_permissions_note) as Record<
+            string,
+            unknown
+          >;
+        } catch {
+          consentMeta = {
+            consent_version: lead.compliance.consent_version,
+            note: "unparsed_sharing_permissions_note",
+          };
+        }
+      }
       await supabase.from("audit_logs").insert({
         organization_id: orgId,
         action: "lead_created",
@@ -439,6 +455,10 @@ export class DurableProspectService {
         metadata: {
           assessment_session_id: session.id,
           campaign_id: lead.campaign_id,
+          consent: consentMeta,
+          data_sharing_permitted: lead.compliance?.data_sharing_permitted ?? null,
+          marketing_consent: lead.compliance?.marketing_consent ?? null,
+          resale_permitted: lead.compliance?.resale_permitted ?? false,
         },
       });
     } catch {

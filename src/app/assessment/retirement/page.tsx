@@ -24,10 +24,10 @@ export default function DirectRetirementAssessmentPage() {
       cta="Start Assessment"
       thankYou={
         campaign.branding.thank_you_message ??
-        "Thanks — your retirement profile is ready."
+        "Thanks — your Highwater Capital educational summary is ready."
       }
       strategy="Retirement"
-      brandingName="ALTUS"
+      brandingName="Highwater Capital"
       assessmentTemplateKey="retirement-opportunity-v1"
       trafficSource="DIRECT_ASSESSMENT"
       forceRetirement

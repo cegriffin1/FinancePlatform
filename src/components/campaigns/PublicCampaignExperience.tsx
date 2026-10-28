@@ -5,7 +5,7 @@ import { AssessmentDecisionEngine } from "@/application/intelligence/assessmentD
 import { BUSINESS_GROWTH_ASSESSMENT_V1 } from "@/application/growth/assessmentTemplate";
 import { AltusMark } from "@/components/brand/AltusLogo";
 import { RetirementAssessmentExperience } from "@/components/assessment/RetirementAssessmentExperience";
-import { PUBLIC_CONSENT_TEXT } from "@/domain/compliance/consent";
+import { PUBLIC_CONSENT_TEXT_V1 } from "@/domain/compliance/consent";
 
 type Props = {
   organizationSlug: string;
@@ -256,7 +256,7 @@ function ContactFormLegacy({
       </div>
       <label className="mt-4 flex items-start gap-3 text-sm">
         <input required type="checkbox" name="consent" className="mt-1 h-5 w-5" />
-        <span>{PUBLIC_CONSENT_TEXT}</span>
+        <span>{PUBLIC_CONSENT_TEXT_V1}</span>
       </label>
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
       <button
