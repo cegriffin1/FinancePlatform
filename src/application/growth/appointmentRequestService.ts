@@ -107,6 +107,8 @@ async function persistPreferredAppointmentRequestUnlocked(input: {
         agent_name: APPOINTMENT_REQUEST_AGENT_PLACEHOLDER,
         scheduled_at: input.preference.preferredAtIso,
         preferred_contact_method: input.preferredContactMethod,
+        preferred_time_zone: input.preference.timeZone,
+        is_preference_only: true,
         notes: input.preference.notes,
         status: APPOINTMENT_REQUEST_STATUS,
         created_by: null,

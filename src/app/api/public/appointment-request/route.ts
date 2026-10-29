@@ -63,13 +63,20 @@ export async function POST(request: Request) {
 
     if (isSupabaseDataMode()) {
       const supabase = createSupabaseServiceClient();
-      const { data: row } = await supabase
+      // leads.territory stores consumer state/region (no leads.state column)
+      const { data: row, error: leadLookupError } = await supabase
         .from("leads")
         .select(
-          "id,organization_id,campaign_id,assessment_session_id,preferred_contact,first_name,last_name,email,phone,state",
+          "id,organization_id,campaign_id,assessment_session_id,preferred_contact,first_name,last_name,email,phone,territory",
         )
         .eq("id", parsed.leadId)
         .maybeSingle();
+      if (leadLookupError) {
+        return NextResponse.json(
+          { error: "Unable to resolve lead.", code: "PERSISTENCE_ERROR" },
+          { status: 503 },
+        );
+      }
       if (!row?.id) {
         return NextResponse.json(
           { error: "Lead not found.", code: "NOT_FOUND" },
@@ -104,7 +111,7 @@ export async function POST(request: Request) {
         last_name: (row.last_name as string) ?? "",
         email: (row.email as string) ?? "",
         phone: (row.phone as string) ?? "",
-        state: (row.state as string) ?? "",
+        state: (row.territory as string) ?? "",
         appointments: [],
       } as unknown as NonNullable<typeof lead>;
     }
