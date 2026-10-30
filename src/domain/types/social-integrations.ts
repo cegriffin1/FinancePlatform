@@ -10,6 +10,10 @@ export const INTEGRATION_CONNECTION_STATUSES = [
   "ACTION_REQUIRED",
   "EXPIRED",
   "ERROR",
+  // Legacy / soft-disconnect vocabulary persisted in DB check constraint
+  "disconnected",
+  "connected",
+  "error",
 ] as const;
 
 export type IntegrationConnectionStatus =

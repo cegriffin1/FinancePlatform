@@ -20,6 +20,7 @@ beforeEach(() => {
   resetOauthStateStore();
   process.env.PROVIDER_MODE = "SIMULATION";
   process.env.ALLOW_LIVE_AD_PUBLISH = "false";
+  process.env.ALTUS_DATA_MODE = "simulation";
 });
 
 describe("Connected Accounts simulation", () => {
@@ -27,8 +28,8 @@ describe("Connected Accounts simulation", () => {
     expect(LIVE_SOCIAL_OAUTH_ENABLED).toBe(false);
   });
 
-  it("lists four platform cards", () => {
-    const cards = listConnectedAccountCards(ORG_A);
+  it("lists four platform cards", async () => {
+    const cards = await listConnectedAccountCards(ORG_A);
     expect(cards.map((c) => c.platform)).toEqual([
       "facebook",
       "instagram",
@@ -38,8 +39,8 @@ describe("Connected Accounts simulation", () => {
     expect(cards.every((c) => c.status === "NOT_CONNECTED")).toBe(true);
   });
 
-  it("connects facebook and instagram via shared meta provider", () => {
-    const fb = beginSocialOauthConnect({
+  it("connects facebook and instagram via shared meta provider", async () => {
+    const fb = await beginSocialOauthConnect({
       organizationId: ORG_A,
       platform: "facebook",
     });
@@ -49,7 +50,7 @@ describe("Connected Accounts simulation", () => {
     expect(fb.connection.provider).toBe("meta");
     expect(fb.connection).not.toHaveProperty("credential_ref");
 
-    const cards = listConnectedAccountCards(ORG_A);
+    const cards = await listConnectedAccountCards(ORG_A);
     expect(cards.find((c) => c.platform === "facebook")?.status).toBe("CONNECTED");
     expect(cards.find((c) => c.platform === "instagram")?.status).toBe("CONNECTED");
     expect(cards.find((c) => c.platform === "facebook")?.authorizedAssets.length).toBeGreaterThan(
@@ -57,13 +58,13 @@ describe("Connected Accounts simulation", () => {
     );
   });
 
-  it("blocks LIVE provider redirects even when PROVIDER_MODE=LIVE", () => {
+  it("blocks LIVE provider redirects even when PROVIDER_MODE=LIVE", async () => {
     process.env.PROVIDER_MODE = "LIVE";
     process.env.ALLOW_LIVE_AD_PUBLISH = "true";
     process.env.META_APP_ID = "app";
     process.env.META_APP_SECRET = "secret";
     process.env.META_REDIRECT_URI = "https://example.com/callback";
-    const result = beginSocialOauthConnect({
+    const result = await beginSocialOauthConnect({
       organizationId: ORG_A,
       platform: "facebook",
     });
@@ -75,8 +76,8 @@ describe("Connected Accounts simulation", () => {
     expect(JSON.stringify(result)).not.toMatch(/authorizeUrl|access_token|secret/);
   });
 
-  it("enforces tenant isolation on disconnect", () => {
-    const connected = beginSocialOauthConnect({
+  it("enforces tenant isolation on disconnect", async () => {
+    const connected = await beginSocialOauthConnect({
       organizationId: ORG_A,
       platform: "linkedin",
     });
@@ -84,26 +85,27 @@ describe("Connected Accounts simulation", () => {
     if (connected.redirect !== "none") return;
     const connectionId = connected.connection.id!;
 
-    const cross = disconnectSocialProvider({
+    const cross = await disconnectSocialProvider({
       organizationId: ORG_B,
       provider: "linkedin",
       connectionId,
     });
     expect(cross.ok).toBe(false);
 
-    const ok = disconnectSocialProvider({
+    const ok = await disconnectSocialProvider({
       organizationId: ORG_A,
       provider: "linkedin",
       connectionId,
     });
     expect(ok.ok).toBe(true);
     expect(
-      listConnectedAccountCards(ORG_A).find((c) => c.platform === "linkedin")?.status,
+      (await listConnectedAccountCards(ORG_A)).find((c) => c.platform === "linkedin")
+        ?.status,
     ).toBe("NOT_CONNECTED");
   });
 
-  it("never returns sealed tokens in public views", () => {
-    const result = beginSocialOauthConnect({
+  it("never returns sealed tokens in public views", async () => {
+    const result = await beginSocialOauthConnect({
       organizationId: ORG_A,
       platform: "tiktok",
     });
@@ -116,7 +118,7 @@ describe("Connected Accounts simulation", () => {
   });
 
   it("keeps vaulted tokens openable only server-side after connect", async () => {
-    beginSocialOauthConnect({ organizationId: ORG_A, platform: "tiktok" });
+    await beginSocialOauthConnect({ organizationId: ORG_A, platform: "tiktok" });
     const { getIntegrationStore } = await import(
       "@/application/integrations/integrationStore"
     );
@@ -128,15 +130,15 @@ describe("Connected Accounts simulation", () => {
     expect(opened.access_token).toContain("sim_access");
   });
 
-  it("reconnect replaces the prior connection", () => {
-    const first = beginSocialOauthConnect({
+  it("reconnect replaces the prior connection", async () => {
+    const first = await beginSocialOauthConnect({
       organizationId: ORG_A,
       platform: "tiktok",
     });
     expect(first.redirect).toBe("none");
     if (first.redirect !== "none") return;
     const firstId = first.connection.id;
-    const second = reconnectSocialPlatform({
+    const second = await reconnectSocialPlatform({
       organizationId: ORG_A,
       platform: "tiktok",
     });
@@ -193,8 +195,8 @@ describe("OAuth LIVE callback fail-closed", () => {
 });
 
 describe("secret leakage checks", () => {
-  it("public connection JSON never contains sealed material", () => {
-    const result = beginSocialOauthConnect({
+  it("public connection JSON never contains sealed material", async () => {
+    const result = await beginSocialOauthConnect({
       organizationId: ORG_A,
       platform: "linkedin",
       profileId: "profile-x",

@@ -1,32 +1,31 @@
 /**
  * Secure social OAuth orchestration for Connected Accounts.
  *
- * FOUNDATION STATUS: SIMULATION ONLY
- * - Connect/disconnect operate on the in-memory integration store
- * - LIVE provider authorization redirects are hard-blocked
- * - LIVE token exchange is not implemented (fail closed)
- * - Never returns raw tokens to browser-facing payloads
+ * FOUNDATION STATUS: SIMULATION ONLY for LIVE provider redirects.
+ * Durable connection + OAuth nonce persistence is used when ALTUS_DATA_MODE=supabase.
  */
 import {
   CONNECTED_PLATFORM_CATALOG,
   type ConnectedPlatform,
   type SocialOauthProvider,
-  isConnectedPlatform,
   platformToOauthProvider,
 } from "@/domain/social/connectedPlatforms";
 import {
   createOauthState,
-  consumeOauthState,
+  createOauthStateAsync,
+  consumeOauthStateAsync,
 } from "@/application/integrations/oauthStateStore";
 import {
-  appendAudit,
-  getIntegrationStore,
   publicConnectionView,
-  upsertSimConnection,
 } from "@/application/integrations/integrationStore";
+import {
+  disconnectDurableConnection,
+  getDurableConnection,
+  upsertDurableConnection,
+} from "@/application/integrations/IntegrationConnectionRepository";
 import { getProviderMode } from "@/infrastructure/security/credentialVault";
 
-/** Hard gate: no external provider OAuth until durable nonce store + token exchange ship. */
+/** Hard gate: no external provider OAuth until token exchange ships. */
 export const LIVE_SOCIAL_OAUTH_ENABLED = false;
 
 export type AuthorizeResult =
@@ -102,33 +101,25 @@ function simPermissions(platform: ConnectedPlatform): string[] {
   return CONNECTED_PLATFORM_CATALOG[platform].requestedScopes.slice(0, 4);
 }
 
-/**
- * Start connect. Foundation always completes as SIMULATION (no external redirect).
- * LIVE provider authorization is hard-blocked regardless of PROVIDER_MODE until
- * LIVE_SOCIAL_OAUTH_ENABLED is flipped after durable state + token exchange land.
- */
-export function beginSocialOauthConnect(input: {
+export async function beginSocialOauthConnect(input: {
   organizationId: string;
   platform: ConnectedPlatform;
   profileId?: string | null;
-}): AuthorizeResult {
-  if (!LIVE_SOCIAL_OAUTH_ENABLED) {
-    // Even if PROVIDER_MODE=LIVE, do not redirect to Meta/LinkedIn/TikTok yet.
-    if (getProviderMode() === "LIVE") {
-      return {
-        mode: "LIVE",
-        redirect: "blocked",
-        simulationOnly: true,
-        error:
-          "LIVE social OAuth is disabled in this foundation. Durable OAuth state persistence and token exchange are required first.",
-        code: "LIVE_OAUTH_NOT_ENABLED",
-        missingEnv: missingOauthEnv(platformToOauthProvider(input.platform)),
-      };
-    }
+}): Promise<AuthorizeResult> {
+  if (!LIVE_SOCIAL_OAUTH_ENABLED && getProviderMode() === "LIVE") {
+    return {
+      mode: "LIVE",
+      redirect: "blocked",
+      simulationOnly: true,
+      error:
+        "LIVE social OAuth is disabled in this foundation. Durable OAuth state persistence and token exchange are required first.",
+      code: "LIVE_OAUTH_NOT_ENABLED",
+      missingEnv: missingOauthEnv(platformToOauthProvider(input.platform)),
+    };
   }
 
   const provider = platformToOauthProvider(input.platform);
-  const connection = upsertSimConnection({
+  const connection = await upsertDurableConnection({
     organizationId: input.organizationId,
     provider: provider === "tiktok" ? "tiktok" : provider,
     accountName: simAccountName(input.platform),
@@ -139,6 +130,8 @@ export function beginSocialOauthConnect(input: {
     authorizedAssets: simAssets(input.platform),
     connectedBy: input.profileId ?? null,
     platformHint: input.platform,
+    mode: "SIMULATION",
+    status: "CONNECTED",
   });
 
   return {
@@ -147,14 +140,10 @@ export function beginSocialOauthConnect(input: {
     simulationOnly: true,
     connection: publicConnectionView(connection),
     message:
-      "SIMULATION ONLY — connection stored in-memory. No live provider authorization, posting, or ad spend.",
+      "SIMULATION ONLY — connection persisted for the organization. No live provider authorization, posting, or ad spend.",
   };
 }
 
-/**
- * LIVE callback handler. Always fails closed in this foundation.
- * Does not log authorization codes or tokens.
- */
 export async function completeSocialOauthCallback(input: {
   state: string;
   code: string | null;
@@ -181,26 +170,7 @@ export async function completeSocialOauthCallback(input: {
     return { ok: false, error: "Missing authorization code", code: "CODE_MISSING" };
   }
 
-  // Never enable exchange while foundation flag is off.
-  if (!LIVE_SOCIAL_OAUTH_ENABLED) {
-    // Still validate/consume state when present so replay tests exercise the store,
-    // but never exchange or persist provider tokens.
-    const consumed = consumeOauthState(input.state, {
-      expectedOrganizationId: input.expectedOrganizationId,
-      expectedProfileId: input.expectedProfileId,
-    });
-    if (!consumed.ok) {
-      return { ok: false, error: consumed.error, code: consumed.code };
-    }
-    return {
-      ok: false,
-      error:
-        "LIVE social OAuth is disabled. Authorization code was discarded without token exchange.",
-      code: "LIVE_OAUTH_NOT_ENABLED",
-    };
-  }
-
-  const consumed = consumeOauthState(input.state, {
+  const consumed = await consumeOauthStateAsync(input.state, {
     expectedOrganizationId: input.expectedOrganizationId,
     expectedProfileId: input.expectedProfileId,
   });
@@ -208,25 +178,12 @@ export async function completeSocialOauthCallback(input: {
     return { ok: false, error: consumed.error, code: consumed.code };
   }
 
-  const { payload } = consumed;
-  if (!isConnectedPlatform(payload.platform)) {
-    return { ok: false, error: "Unknown platform in state", code: "PLATFORM_INVALID" };
-  }
-
-  if (getProviderMode() !== "LIVE") {
+  if (!LIVE_SOCIAL_OAUTH_ENABLED) {
     return {
       ok: false,
-      error: "LIVE OAuth callback rejected while PROVIDER_MODE is not LIVE",
-      code: "LIVE_DISABLED",
-    };
-  }
-
-  const missing = missingOauthEnv(payload.provider as SocialOauthProvider);
-  if (missing.length) {
-    return {
-      ok: false,
-      error: "OAuth credentials missing for token exchange",
-      code: "OAUTH_ENV_MISSING",
+      error:
+        "LIVE social OAuth is disabled. Authorization code was discarded without token exchange.",
+      code: "LIVE_OAUTH_NOT_ENABLED",
     };
   }
 
@@ -249,46 +206,34 @@ export function createTestOauthState(input: {
   return createOauthState(input);
 }
 
-export function disconnectSocialProvider(input: {
+export async function createDurableTestOauthState(input: {
+  organizationId: string;
+  provider: string;
+  platform: string;
+  profileId?: string | null;
+  ttlMs?: number;
+}) {
+  return createOauthStateAsync(input);
+}
+
+export async function disconnectSocialProvider(input: {
   organizationId: string;
   provider: SocialOauthProvider;
   connectionId: string;
   profileId?: string | null;
-}): { ok: true } | { ok: false; error: string; code: string } {
-  const store = getIntegrationStore();
-  const idx = store.connections.findIndex(
-    (c) =>
-      c.id === input.connectionId &&
-      c.organization_id === input.organizationId &&
-      c.provider === input.provider,
-  );
-  if (idx < 0) {
-    return { ok: false, error: "Connection not found for organization", code: "NOT_FOUND" };
-  }
-  const [removed] = store.connections.splice(idx, 1);
-  appendAudit({
-    organization_id: input.organizationId,
-    actor_profile_id: input.profileId ?? null,
-    action: "provider.disconnected",
-    entity_type: "integration_connection",
-    entity_id: removed?.id ?? input.connectionId,
-    metadata: { provider: input.provider },
-  });
-  return { ok: true };
+}): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
+  return disconnectDurableConnection(input);
 }
 
-export function reconnectSocialPlatform(input: {
+export async function reconnectSocialPlatform(input: {
   organizationId: string;
   platform: ConnectedPlatform;
   profileId?: string | null;
-}): AuthorizeResult {
+}): Promise<AuthorizeResult> {
   const provider = platformToOauthProvider(input.platform);
-  const store = getIntegrationStore();
-  const existing = store.connections.find(
-    (c) => c.organization_id === input.organizationId && c.provider === provider,
-  );
+  const existing = await getDurableConnection(input.organizationId, provider);
   if (existing) {
-    disconnectSocialProvider({
+    await disconnectDurableConnection({
       organizationId: input.organizationId,
       provider,
       connectionId: existing.id,

@@ -5,12 +5,13 @@ import {
   type SocialOauthProvider,
   platformToOauthProvider,
 } from "@/domain/social/connectedPlatforms";
-import { getIntegrationStore } from "@/application/integrations/integrationStore";
 import { getProviderMode } from "@/infrastructure/security/credentialVault";
 import {
   missingOauthEnv,
   oauthConfigured,
 } from "@/application/integrations/SocialOAuthService";
+import { listDurableConnections } from "@/application/integrations/IntegrationConnectionRepository";
+import type { ProviderCredentialRecord } from "@/domain/types/social-integrations";
 
 export type ConnectedAccountCard = {
   platform: ConnectedPlatform;
@@ -37,24 +38,36 @@ export type ConnectedAccountCard = {
   canReconnect: boolean;
 };
 
-function connectionForOrgProvider(
-  organizationId: string,
+function connectionForProvider(
+  connections: ProviderCredentialRecord[],
   provider: SocialOauthProvider,
-) {
-  return getIntegrationStore().connections.find(
-    (c) => c.organization_id === organizationId && c.provider === provider,
-  );
+): ProviderCredentialRecord | null {
+  const row = connections.find((c) => c.provider === provider) ?? null;
+  if (!row) return null;
+  // Treat soft-disconnect as not connected for UI cards.
+  if (
+    row.status === "disconnected" ||
+    row.status === "NOT_CONNECTED" ||
+    !row.credential_ref
+  ) {
+    return null;
+  }
+  return row;
 }
 
-export function listConnectedAccountCards(
+export async function listConnectedAccountCards(
   organizationId: string,
-): ConnectedAccountCard[] {
+): Promise<ConnectedAccountCard[]> {
   const mode = getProviderMode();
+  const connections = await listDurableConnections(organizationId);
+
   return CONNECTED_PLATFORMS.map((platform) => {
     const def = CONNECTED_PLATFORM_CATALOG[platform];
     const provider = platformToOauthProvider(platform);
-    const conn = connectionForOrgProvider(organizationId, provider);
-    const connected = conn?.status === "CONNECTED";
+    const conn = connectionForProvider(connections, provider);
+    const connected =
+      Boolean(conn) &&
+      (conn!.status === "CONNECTED" || conn!.status === "connected");
     const missing = missingOauthEnv(provider);
 
     return {
@@ -62,7 +75,7 @@ export function listConnectedAccountCards(
       label: def.label,
       subtitle: def.subtitle,
       oauthProvider: provider,
-      status: conn?.status ?? "NOT_CONNECTED",
+      status: connected ? "CONNECTED" : "NOT_CONNECTED",
       accountName: conn?.display_account_name ?? null,
       authorizedAssets: conn?.authorized_assets ?? [],
       permissions: conn?.permissions_summary ?? [],

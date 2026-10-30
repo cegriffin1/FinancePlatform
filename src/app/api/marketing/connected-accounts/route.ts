@@ -13,6 +13,11 @@ import {
 } from "@/domain/social/connectedPlatforms";
 import { getProviderMode } from "@/infrastructure/security/credentialVault";
 import { listMarketingFoundationModules } from "@/application/marketing/marketingFoundation";
+import {
+  touchDurableConnectionSync,
+  isDurableIntegrationConnectionsEnabled,
+} from "@/application/integrations/IntegrationConnectionRepository";
+import { isDurableOauthStateStoreEnabled } from "@/application/integrations/oauthStateStore";
 
 /** Local sim fallback only — production requires a real membership org id. */
 const SIM_FALLBACK_ORG = "20000000-0000-4000-8000-000000000003";
@@ -37,7 +42,9 @@ export async function GET() {
   return NextResponse.json({
     mode: getProviderMode(),
     simulationOnly: true,
-    platforms: listConnectedAccountCards(orgId),
+    durablePersistence: isDurableIntegrationConnectionsEnabled(),
+    durableOauthState: isDurableOauthStateStoreEnabled(),
+    platforms: await listConnectedAccountCards(orgId),
     foundation: listMarketingFoundationModules(),
     safety: {
       simulation_only: true,
@@ -45,7 +52,7 @@ export async function GET() {
       highwater_public_launch: process.env.HIGHWATER_PUBLIC_LAUNCH ?? null,
       allow_live_ad_publish: process.env.ALLOW_LIVE_AD_PUBLISH === "true",
       publishes_disabled: true,
-      note: "SIMULATION ONLY — connections are in-memory. No live provider OAuth, posting, advertising, or budget spend.",
+      note: "SIMULATION ONLY for provider OAuth — connections may persist durably in Supabase mode. No live provider OAuth, posting, advertising, or budget spend.",
     },
   });
 }
@@ -77,12 +84,12 @@ export async function POST(request: Request) {
     if (action === "connect" || action === "reconnect") {
       const result =
         action === "connect"
-          ? beginSocialOauthConnect({
+          ? await beginSocialOauthConnect({
               organizationId: orgId,
               platform,
               profileId: auth.ctx.profileId,
             })
-          : reconnectSocialPlatform({
+          : await reconnectSocialPlatform({
               organizationId: orgId,
               platform,
               profileId: auth.ctx.profileId,
@@ -94,13 +101,11 @@ export async function POST(request: Request) {
             simulationOnly: true,
             error: result.error,
             code: result.code,
-            // Do not echo missingEnv lists with secret names into clients unnecessarily
             missingEnvCount: result.missingEnv.length,
           },
           { status: 503 },
         );
       }
-      // Never include authorizeUrl/state/tokens in the response body.
       return NextResponse.json({
         ok: true,
         simulationOnly: true,
@@ -114,7 +119,7 @@ export async function POST(request: Request) {
     if (action === "disconnect") {
       const connectionId = z.string().uuid().parse(body.connectionId);
       const provider = platformToOauthProvider(platform);
-      const result = disconnectSocialProvider({
+      const result = await disconnectSocialProvider({
         organizationId: orgId,
         provider,
         connectionId,
@@ -129,28 +134,19 @@ export async function POST(request: Request) {
     if (action === "retry_sync") {
       const connectionId = z.string().uuid().parse(body.connectionId);
       const provider = platformToOauthProvider(platform);
-      const { getIntegrationStore } = await import(
-        "@/application/integrations/integrationStore"
-      );
-      const store = getIntegrationStore();
-      const conn = store.connections.find(
-        (c) =>
-          c.id === connectionId &&
-          c.organization_id === orgId &&
-          c.provider === provider,
-      );
-      if (!conn) {
-        return NextResponse.json(
-          { error: "Connection not found", code: "NOT_FOUND" },
-          { status: 404 },
-        );
+      const result = await touchDurableConnectionSync({
+        organizationId: orgId,
+        provider,
+        connectionId,
+      });
+      if (!result.ok) {
+        return NextResponse.json(result, {
+          status: result.code === "NOT_FOUND" ? 404 : 503,
+        });
       }
-      conn.last_synced_at = new Date().toISOString();
-      conn.status = "CONNECTED";
-      conn.last_error = null;
       return NextResponse.json({
         ok: true,
-        lastSuccessfulSync: conn.last_synced_at,
+        lastSuccessfulSync: result.lastSuccessfulSync,
       });
     }
 

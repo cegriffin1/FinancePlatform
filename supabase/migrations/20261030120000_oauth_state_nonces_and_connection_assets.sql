@@ -1,7 +1,7 @@
--- DRAFT FOR REVIEW — NOT APPLIED
--- Supports durable OAuth state single-use nonces (multi-instance safe) and
--- Connected Accounts metadata on integration_connections.
--- Do not apply until LIVE social OAuth is approved.
+-- Durable OAuth state nonces + Connected Accounts metadata on integration_connections.
+-- Applied to STAGING (xrxikvktrngmbiavhwlp) on 2026-10-30.
+-- Do NOT apply to production without separate approval.
+-- LIVE social OAuth / token exchange remain disabled in application code.
 
 -- ---------------------------------------------------------------------------
 -- OAuth state nonce ledger (single-use across serverless instances)
