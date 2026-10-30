@@ -12,16 +12,29 @@ import { getProviderMode } from "@/infrastructure/security/credentialVault";
 import { runQueuedIntegrationJobs } from "@/application/integrations/registerJobs";
 import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 
-const DEMO_ORG = "20000000-0000-4000-8000-000000000003";
+const SIM_FALLBACK_ORG = "20000000-0000-4000-8000-000000000003";
+
+function resolveOrgId(organizationId: string | null): string | null {
+  if (organizationId) return organizationId;
+  if (process.env.NODE_ENV !== "production") return SIM_FALLBACK_ORG;
+  return null;
+}
 
 export async function GET() {
   const auth = await requireOrgAuth({ permission: "integrations.view" });
   if (!auth.ok) return auth.response;
+  const orgId = resolveOrgId(auth.ctx.organizationId);
+  if (!orgId) {
+    return NextResponse.json(
+      { error: "Organization required", code: "ORG_REQUIRED" },
+      { status: 403 },
+    );
+  }
 
   const store = getIntegrationStore();
   const connections = LIVE_AD_PROVIDERS.map((provider) => {
     const existing = store.connections.find(
-      (c) => c.organization_id === DEMO_ORG && c.provider === provider,
+      (c) => c.organization_id === orgId && c.provider === provider,
     );
     if (existing) return publicConnectionView(existing);
     return {
@@ -34,6 +47,8 @@ export async function GET() {
       last_synced_at: null,
       token_expires_at: null,
       permissions_summary: [],
+      authorized_assets: [],
+      platform_hint: null,
       last_error: null,
     };
   });
@@ -42,14 +57,21 @@ export async function GET() {
     mode: getProviderMode(),
     capabilities: CHANNEL_CAPABILITIES,
     connections,
-    creatives: store.creatives.filter((c) => c.organization_id === DEMO_ORG),
-    audits: store.audits.filter((a) => a.organization_id === DEMO_ORG).slice(0, 50),
+    creatives: store.creatives.filter((c) => c.organization_id === orgId),
+    audits: store.audits.filter((a) => a.organization_id === orgId).slice(0, 50),
   });
 }
 
 export async function POST(request: Request) {
   const auth = await requireOrgAuth({ permission: "integrations.manage" });
   if (!auth.ok) return auth.response;
+  const orgId = resolveOrgId(auth.ctx.organizationId);
+  if (!orgId) {
+    return NextResponse.json(
+      { error: "Organization required", code: "ORG_REQUIRED" },
+      { status: 403 },
+    );
+  }
 
   try {
     const body = await request.json();
@@ -63,7 +85,7 @@ export async function POST(request: Request) {
         })
         .parse(body);
       const provider = getChannelProvider(parsed.provider);
-      const result = await provider.connectAccount(DEMO_ORG, parsed.authCode);
+      const result = await provider.connectAccount(orgId, parsed.authCode);
       await runQueuedIntegrationJobs(5);
       return NextResponse.json({ ok: true, ...result, mode: getProviderMode() });
     }
@@ -76,12 +98,12 @@ export async function POST(request: Request) {
         })
         .parse(body);
       await getChannelProvider(parsed.provider).disconnectAccount(
-        DEMO_ORG,
+        orgId,
         parsed.connectionId,
       );
       appendAudit({
-        organization_id: DEMO_ORG,
-        actor_profile_id: null,
+        organization_id: orgId,
+        actor_profile_id: auth.ctx.profileId,
         action: "provider.disconnected",
         entity_type: "integration_connection",
         entity_id: parsed.connectionId,
@@ -99,7 +121,7 @@ export async function POST(request: Request) {
         .parse(body);
       const store = getIntegrationStore();
       const conn = store.connections.find(
-        (c) => c.id === parsed.connectionId && c.organization_id === DEMO_ORG,
+        (c) => c.id === parsed.connectionId && c.organization_id === orgId,
       );
       if (!conn) throw new Error("Connection not found");
       conn.last_synced_at = new Date().toISOString();
@@ -122,7 +144,7 @@ export async function POST(request: Request) {
       const store = getIntegrationStore();
       const creative = {
         id: crypto.randomUUID(),
-        organization_id: DEMO_ORG,
+        organization_id: orgId,
         asset_type: parsed.asset_type,
         file_reference: parsed.file_reference ?? null,
         headline: parsed.headline,
@@ -140,7 +162,7 @@ export async function POST(request: Request) {
     if (action === "seed_simulation") {
       for (const provider of LIVE_AD_PROVIDERS) {
         upsertSimConnection({
-          organizationId: DEMO_ORG,
+          organizationId: orgId,
           provider,
           accountName:
             provider === "meta"

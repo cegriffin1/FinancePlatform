@@ -4,6 +4,12 @@
  */
 export const APP_NAV = [
   { href: "/app", label: "Home", permission: null },
+  { href: "/app/marketing", label: "Marketing", permission: "integrations.view" },
+  {
+    href: "/app/marketing/connected-accounts",
+    label: "Connected Accounts",
+    permission: "integrations.view",
+  },
   { href: "/app/campaigns", label: "Campaigns", permission: "campaigns.view" },
   { href: "/app/media", label: "Media Library", permission: "campaigns.view" },
   { href: "/app/leads", label: "Leads", permission: "leads.view_own" },
@@ -53,7 +59,7 @@ export const APP_NAV = [
   {
     href: "/app/settings/integrations",
     label: "Integrations",
-    permission: "organization.view",
+    permission: "integrations.view",
   },
 ] as const;
 

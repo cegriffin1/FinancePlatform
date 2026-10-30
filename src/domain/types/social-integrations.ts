@@ -21,6 +21,16 @@ export type ProviderMode = (typeof PROVIDER_MODES)[number];
 export const LIVE_AD_PROVIDERS = ["meta", "linkedin", "google"] as const;
 export type LiveAdProvider = (typeof LIVE_AD_PROVIDERS)[number];
 
+/** Providers that may store Connected Accounts credentials (includes TikTok before ads LIVE). */
+export const SOCIAL_CONNECTION_PROVIDERS = [
+  "meta",
+  "linkedin",
+  "google",
+  "tiktok",
+] as const;
+export type SocialConnectionProvider =
+  (typeof SOCIAL_CONNECTION_PROVIDERS)[number];
+
 export type ChannelCapability = {
   supportsImages: boolean;
   supportsVideo: boolean;
@@ -67,7 +77,7 @@ export type NormalizedCampaignMetrics = {
 export type ProviderCredentialRecord = {
   id: UUID;
   organization_id: UUID;
-  provider: LiveAdProvider;
+  provider: SocialConnectionProvider;
   status: IntegrationConnectionStatus;
   mode: ProviderMode;
   provider_account_id: string | null;
@@ -83,6 +93,10 @@ export type ProviderCredentialRecord = {
   last_error: string | null;
   permissions_summary: string[];
   display_account_name: string | null;
+  /** Authorized Pages / IG / ad accounts — non-secret labels only. */
+  authorized_assets: string[];
+  /** Which Connected Accounts card initiated the connection (meta may be fb or ig). */
+  platform_hint: string | null;
 };
 
 export type ExternalRecordMapping = {

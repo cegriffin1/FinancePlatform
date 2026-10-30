@@ -7,6 +7,7 @@ import type {
   ProviderWebhookEvent,
   PublishAuditEvent,
   LiveAdProvider,
+  SocialConnectionProvider,
 } from "@/domain/types/social-integrations";
 import { sealTokenBundle } from "@/infrastructure/security/credentialVault";
 
@@ -82,21 +83,27 @@ export function appendAudit(input: Omit<PublishAuditEvent, "id" | "created_at">)
 
 export function upsertSimConnection(input: {
   organizationId: string;
-  provider: LiveAdProvider;
+  provider: SocialConnectionProvider;
   accountName: string;
   accountId?: string;
   businessId?: string;
+  scopes?: string[];
+  permissionsSummary?: string[];
+  authorizedAssets?: string[];
+  connectedBy?: string | null;
+  platformHint?: string | null;
 }): ProviderCredentialRecord {
   const store = getIntegrationStore();
   const existing = store.connections.find(
     (c) => c.organization_id === input.organizationId && c.provider === input.provider,
   );
   const now = new Date().toISOString();
+  const scopes = input.scopes ?? ["ads_management", "leads_retrieval"];
   const credential_ref = sealTokenBundle({
     access_token: `sim_access_${input.provider}`,
     refresh_token: `sim_refresh_${input.provider}`,
     expires_at: new Date(Date.now() + 7 * 24 * 3600_000).toISOString(),
-    scopes: ["ads_management", "leads_retrieval"],
+    scopes,
   });
 
   if (existing) {
@@ -109,6 +116,19 @@ export function upsertSimConnection(input: {
     existing.last_synced_at = now;
     existing.last_error = null;
     existing.token_expires_at = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+    existing.scopes = scopes;
+    if (input.permissionsSummary) {
+      existing.permissions_summary = input.permissionsSummary;
+    }
+    if (input.authorizedAssets) {
+      existing.authorized_assets = input.authorizedAssets;
+    }
+    if (input.platformHint !== undefined) {
+      existing.platform_hint = input.platformHint;
+    }
+    if (input.connectedBy !== undefined) {
+      existing.connected_by = input.connectedBy;
+    }
     return existing;
   }
 
@@ -120,25 +140,35 @@ export function upsertSimConnection(input: {
     mode: "SIMULATION",
     provider_account_id: input.accountId ?? `${input.provider}_acct_001`,
     provider_business_id: input.businessId ?? `${input.provider}_biz_001`,
-    scopes: ["ads_management", "leads_retrieval"],
-    connected_by: null,
+    scopes,
+    connected_by: input.connectedBy ?? null,
     connected_at: now,
     last_refreshed_at: now,
     last_synced_at: now,
     token_expires_at: new Date(Date.now() + 7 * 24 * 3600_000).toISOString(),
     credential_ref,
     last_error: null,
-    permissions_summary: ["Manage ads", "Read leads", "Read insights"],
+    permissions_summary: input.permissionsSummary ?? [
+      "Manage ads",
+      "Read leads",
+      "Read insights",
+    ],
     display_account_name: input.accountName,
+    authorized_assets: input.authorizedAssets ?? [],
+    platform_hint: input.platformHint ?? null,
   };
   store.connections.push(record);
   appendAudit({
     organization_id: input.organizationId,
-    actor_profile_id: null,
+    actor_profile_id: input.connectedBy ?? null,
     action: "provider.connected",
     entity_type: "integration_connection",
     entity_id: record.id,
-    metadata: { provider: input.provider, mode: "SIMULATION" },
+    metadata: {
+      provider: input.provider,
+      mode: "SIMULATION",
+      platform_hint: input.platformHint ?? null,
+    },
   });
   return record;
 }
@@ -154,6 +184,8 @@ export function publicConnectionView(c: ProviderCredentialRecord) {
     last_synced_at: c.last_synced_at,
     token_expires_at: c.token_expires_at,
     permissions_summary: c.permissions_summary,
+    authorized_assets: c.authorized_assets ?? [],
+    platform_hint: c.platform_hint ?? null,
     last_error: c.last_error,
     // never expose credential_ref
   };

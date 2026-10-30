@@ -60,6 +60,8 @@ export async function requireOrgAuth(options?: {
           "reports.view_all",
           "setter.leads.view",
           "leads.view_team",
+          "integrations.view",
+          "integrations.manage",
         ] as PermissionKey[],
       },
     };
