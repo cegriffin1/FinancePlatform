@@ -11,6 +11,13 @@ export interface CredentialVault {
   open(sealed: string): string;
 }
 
+export type TokenBundle = {
+  access_token: string;
+  refresh_token?: string | null;
+  expires_at?: string | null;
+  scopes?: string[];
+};
+
 function deriveKey(secret: string): Buffer {
   return createHash("sha256").update(secret).digest();
 }
@@ -59,11 +66,22 @@ class SimulationVault implements CredentialVault {
 
 let vault: CredentialVault | null = null;
 
+/** Test helper — clears cached vault after env key changes. */
+export function resetCredentialVault() {
+  vault = null;
+}
+
+export function hasAesCredentialEncryption(): boolean {
+  const key = process.env.PROVIDER_CREDENTIAL_ENCRYPTION_KEY?.trim();
+  return Boolean(key && key.length >= 16);
+}
+
 export function getCredentialVault(): CredentialVault {
   if (vault) return vault;
-  const key = process.env.PROVIDER_CREDENTIAL_ENCRYPTION_KEY;
-  if (key && key.length >= 16) {
-    vault = new AesGcmVault(deriveKey(key));
+  if (hasAesCredentialEncryption()) {
+    vault = new AesGcmVault(
+      deriveKey(process.env.PROVIDER_CREDENTIAL_ENCRYPTION_KEY!.trim()),
+    );
   } else {
     vault = new SimulationVault();
   }
@@ -78,17 +96,40 @@ export function getProviderMode(): "SIMULATION" | "LIVE" {
   return "SIMULATION";
 }
 
-export type TokenBundle = {
-  access_token: string;
-  refresh_token?: string | null;
-  expires_at?: string | null;
-  scopes?: string[];
-};
-
 export function sealTokenBundle(bundle: TokenBundle): string {
   return getCredentialVault().seal(JSON.stringify(bundle));
 }
 
+/**
+ * Seal LIVE provider tokens. Requires AES-GCM (never the base64 simulation vault).
+ * credential_ref must never contain raw access tokens.
+ */
+export function sealLiveTokenBundle(bundle: TokenBundle): string {
+  if (!hasAesCredentialEncryption()) {
+    throw new Error(
+      "PROVIDER_CREDENTIAL_ENCRYPTION_KEY required to store LIVE provider credentials",
+    );
+  }
+  const aes = new AesGcmVault(
+    deriveKey(process.env.PROVIDER_CREDENTIAL_ENCRYPTION_KEY!.trim()),
+  );
+  const sealed = aes.seal(JSON.stringify(bundle));
+  if (!sealed.startsWith("aesgcm:")) {
+    throw new Error("LIVE credentials must use AES-GCM sealing");
+  }
+  if (
+    sealed.includes(bundle.access_token) ||
+    (bundle.refresh_token && sealed.includes(bundle.refresh_token))
+  ) {
+    throw new Error("Sealed credential_ref must not contain raw tokens");
+  }
+  return sealed;
+}
+
 export function openTokenBundle(ref: string): TokenBundle {
   return JSON.parse(getCredentialVault().open(ref)) as TokenBundle;
+}
+
+export function isAesGcmCredentialRef(ref: string): boolean {
+  return ref.startsWith("aesgcm:");
 }

@@ -15,10 +15,20 @@ import {
   upsertSimConnection,
   appendAudit,
 } from "@/application/integrations/integrationStore";
-import { sealTokenBundle } from "@/infrastructure/security/credentialVault";
+import {
+  isAesGcmCredentialRef,
+  sealTokenBundle,
+} from "@/infrastructure/security/credentialVault";
 import { isSupabaseDataMode } from "@/lib/dataMode";
 import { hasSupabaseConfig } from "@/lib/env";
 import { logAltusError } from "@/lib/observability";
+
+function allowMemoryLiveConnectionInUnitTest(): boolean {
+  return (
+    process.env.NODE_ENV === "test" &&
+    process.env.META_OAUTH_UNIT_TEST === "1"
+  );
+}
 
 export function isDurableIntegrationConnectionsEnabled(): boolean {
   return (
@@ -144,6 +154,7 @@ export async function upsertDurableConnection(
   input: UpsertConnectionInput,
 ): Promise<ProviderCredentialRecord> {
   const now = new Date().toISOString();
+  const mode = input.mode ?? "SIMULATION";
   const scopes = input.scopes ?? ["ads_management", "leads_retrieval"];
   const credential_ref =
     input.credentialRef ??
@@ -153,6 +164,24 @@ export async function upsertDurableConnection(
       expires_at: input.tokenExpiresAt ?? new Date(Date.now() + 7 * 864e5).toISOString(),
       scopes,
     });
+
+  // LIVE connections must never silently land in memory-only storage,
+  // and must never persist non-AES credential refs.
+  if (mode === "LIVE") {
+    if (
+      !isDurableIntegrationConnectionsEnabled() &&
+      !allowMemoryLiveConnectionInUnitTest()
+    ) {
+      throw new Error(
+        "LIVE integration connections require durable Supabase persistence",
+      );
+    }
+    if (!isAesGcmCredentialRef(credential_ref)) {
+      throw new Error(
+        "LIVE integration connections require AES-GCM sealed credential_ref",
+      );
+    }
+  }
 
   // Always keep sim store in sync for legacy channel adapters.
   const memory = upsertSimConnection({
@@ -166,9 +195,18 @@ export async function upsertDurableConnection(
     authorizedAssets: input.authorizedAssets,
     connectedBy: input.connectedBy,
     platformHint: input.platformHint,
+    credentialRef: credential_ref,
+    tokenExpiresAt: input.tokenExpiresAt ?? null,
+    mode,
+    status: input.status ?? "CONNECTED",
   });
 
   if (!isDurableIntegrationConnectionsEnabled()) {
+    if (mode === "LIVE" && !allowMemoryLiveConnectionInUnitTest()) {
+      throw new Error(
+        "LIVE integration connections require durable Supabase persistence",
+      );
+    }
     return memory;
   }
 
@@ -181,7 +219,7 @@ export async function upsertDurableConnection(
       organization_id: input.organizationId,
       provider: input.provider,
       status: input.status ?? "CONNECTED",
-      mode: input.mode ?? "SIMULATION",
+      mode,
       provider_account_id: input.accountId ?? memory.provider_account_id,
       provider_business_id: input.businessId ?? memory.provider_business_id,
       scopes,

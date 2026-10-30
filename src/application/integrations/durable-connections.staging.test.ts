@@ -50,18 +50,21 @@ describe.runIf(canRun)("durable connections on staging", () => {
     const sb = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { persistSession: false },
     });
-    const { data: org } = await sb
+    const { data: org, error: orgErr } = await sb
       .from("organizations")
       .select("id,slug")
       .eq("slug", "altus")
       .maybeSingle();
+    if (orgErr) {
+      throw new Error(`Staging org lookup failed: ${orgErr.message}`);
+    }
     orgId = org?.id || "";
     if (!orgId) {
       const fallback = await sb.from("organizations").select("id").limit(1).maybeSingle();
       orgId = fallback.data?.id || "";
     }
     expect(orgId).toBeTruthy();
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (!orgId || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;

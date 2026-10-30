@@ -1,13 +1,15 @@
 /**
  * Secure social OAuth orchestration for Connected Accounts.
  *
- * FOUNDATION STATUS: SIMULATION ONLY for LIVE provider redirects.
- * Durable connection + OAuth nonce persistence is used when ALTUS_DATA_MODE=supabase.
+ * LIVE Meta OAuth implementation exists but is gated by LIVE_SOCIAL_OAUTH_ENABLED.
+ * Default remains false — no external provider redirects or token exchange in production
+ * until explicitly approved.
  */
 import {
   CONNECTED_PLATFORM_CATALOG,
   type ConnectedPlatform,
   type SocialOauthProvider,
+  isConnectedPlatform,
   platformToOauthProvider,
 } from "@/domain/social/connectedPlatforms";
 import {
@@ -15,17 +17,23 @@ import {
   createOauthStateAsync,
   consumeOauthStateAsync,
 } from "@/application/integrations/oauthStateStore";
-import {
-  publicConnectionView,
-} from "@/application/integrations/integrationStore";
+import { publicConnectionView } from "@/application/integrations/integrationStore";
 import {
   disconnectDurableConnection,
   getDurableConnection,
   upsertDurableConnection,
 } from "@/application/integrations/IntegrationConnectionRepository";
 import { getProviderMode } from "@/infrastructure/security/credentialVault";
+import {
+  completeMetaOauthExchange,
+  disconnectMetaConnection,
+  startMetaOauthAuthorization,
+} from "@/application/integrations/MetaOauthService";
 
-/** Hard gate: no external provider OAuth until token exchange ships. */
+/**
+ * Master gate for LIVE provider redirects + token exchange.
+ * Keep false until staging Meta credentials + E2E approval.
+ */
 export const LIVE_SOCIAL_OAUTH_ENABLED = false;
 
 export type AuthorizeResult =
@@ -34,6 +42,15 @@ export type AuthorizeResult =
       redirect: "none";
       simulationOnly: true;
       connection: ReturnType<typeof publicConnectionView>;
+      message: string;
+    }
+  | {
+      mode: "LIVE";
+      redirect: "external";
+      simulationOnly: false;
+      authorizeUrl: string;
+      /** Opaque CSRF state — required by provider; not a secret token. */
+      state: string;
       message: string;
     }
   | {
@@ -48,7 +65,12 @@ export type AuthorizeResult =
 function requiredEnv(provider: SocialOauthProvider): string[] {
   switch (provider) {
     case "meta":
-      return ["META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI"];
+      return [
+        "META_APP_ID",
+        "META_APP_SECRET",
+        "META_REDIRECT_URI",
+        "PROVIDER_CREDENTIAL_ENCRYPTION_KEY",
+      ];
     case "linkedin":
       return [
         "LINKEDIN_CLIENT_ID",
@@ -106,19 +128,54 @@ export async function beginSocialOauthConnect(input: {
   platform: ConnectedPlatform;
   profileId?: string | null;
 }): Promise<AuthorizeResult> {
-  if (!LIVE_SOCIAL_OAUTH_ENABLED && getProviderMode() === "LIVE") {
+  const provider = platformToOauthProvider(input.platform);
+
+  // LIVE path — Meta only for now; still requires explicit feature flag.
+  if (LIVE_SOCIAL_OAUTH_ENABLED) {
+    if (provider !== "meta") {
+      return {
+        mode: "LIVE",
+        redirect: "blocked",
+        simulationOnly: true,
+        error: `${provider} LIVE OAuth is not implemented yet.`,
+        code: "PROVIDER_LIVE_NOT_IMPLEMENTED",
+        missingEnv: missingOauthEnv(provider),
+      };
+    }
+    const started = await startMetaOauthAuthorization(input);
+    if (!started.ok) {
+      return {
+        mode: "LIVE",
+        redirect: "blocked",
+        simulationOnly: true,
+        error: started.message,
+        code: started.code,
+        missingEnv: started.missingEnv,
+      };
+    }
+    return {
+      mode: "LIVE",
+      redirect: "external",
+      simulationOnly: false,
+      authorizeUrl: started.authorizeUrl,
+      state: started.state,
+      message: "Redirecting to Meta to authorize Facebook / Instagram access.",
+    };
+  }
+
+  // Fail closed if someone sets PROVIDER_MODE=LIVE without the feature flag.
+  if (getProviderMode() === "LIVE") {
     return {
       mode: "LIVE",
       redirect: "blocked",
       simulationOnly: true,
       error:
-        "LIVE social OAuth is disabled in this foundation. Durable OAuth state persistence and token exchange are required first.",
+        "LIVE social OAuth is disabled. Set LIVE_SOCIAL_OAUTH_ENABLED only after Meta staging approval.",
       code: "LIVE_OAUTH_NOT_ENABLED",
-      missingEnv: missingOauthEnv(platformToOauthProvider(input.platform)),
+      missingEnv: missingOauthEnv(provider),
     };
   }
 
-  const provider = platformToOauthProvider(input.platform);
   const connection = await upsertDurableConnection({
     organizationId: input.organizationId,
     provider: provider === "tiktok" ? "tiktok" : provider,
@@ -150,6 +207,7 @@ export async function completeSocialOauthCallback(input: {
   error?: string | null;
   expectedOrganizationId?: string;
   expectedProfileId?: string | null;
+  fetchImpl?: typeof fetch;
 }): Promise<
   | {
       ok: true;
@@ -162,7 +220,7 @@ export async function completeSocialOauthCallback(input: {
   if (input.error) {
     return {
       ok: false,
-      error: "Provider returned an authorization error",
+      error: "The provider denied authorization. You can try connecting again.",
       code: "PROVIDER_DENIED",
     };
   }
@@ -187,11 +245,34 @@ export async function completeSocialOauthCallback(input: {
     };
   }
 
+  const { payload } = consumed;
+  if (!isConnectedPlatform(payload.platform)) {
+    return { ok: false, error: "Unknown platform in state", code: "PLATFORM_INVALID" };
+  }
+  if (payload.provider !== "meta") {
+    return {
+      ok: false,
+      error: "LIVE OAuth for this provider is not implemented.",
+      code: "PROVIDER_LIVE_NOT_IMPLEMENTED",
+    };
+  }
+
+  const exchanged = await completeMetaOauthExchange({
+    organizationId: payload.organizationId,
+    platform: payload.platform,
+    code: input.code,
+    profileId: payload.profileId,
+    fetchImpl: input.fetchImpl,
+  });
+  if (!exchanged.ok) {
+    return { ok: false, error: exchanged.message, code: exchanged.code };
+  }
+
   return {
-    ok: false,
-    error:
-      "LIVE token exchange is not activated. Configure provider apps and implement exchange before connecting LIVE accounts.",
-    code: "TOKEN_EXCHANGE_NOT_ACTIVATED",
+    ok: true,
+    organizationId: exchanged.organizationId,
+    platform: exchanged.platform,
+    connectionId: exchanged.connectionId,
   };
 }
 
@@ -222,6 +303,13 @@ export async function disconnectSocialProvider(input: {
   connectionId: string;
   profileId?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
+  if (input.provider === "meta") {
+    const result = await disconnectMetaConnection(input);
+    if (!result.ok) {
+      return { ok: false, error: result.message, code: result.code };
+    }
+    return { ok: true };
+  }
   return disconnectDurableConnection(input);
 }
 
@@ -233,7 +321,7 @@ export async function reconnectSocialPlatform(input: {
   const provider = platformToOauthProvider(input.platform);
   const existing = await getDurableConnection(input.organizationId, provider);
   if (existing) {
-    await disconnectDurableConnection({
+    await disconnectSocialProvider({
       organizationId: input.organizationId,
       provider,
       connectionId: existing.id,

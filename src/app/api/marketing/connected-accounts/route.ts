@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireOrgAuth } from "@/infrastructure/security/requireOrgAuth";
 import { listConnectedAccountCards } from "@/application/integrations/ConnectedAccountsService";
 import {
+  LIVE_SOCIAL_OAUTH_ENABLED,
   beginSocialOauthConnect,
   disconnectSocialProvider,
   reconnectSocialPlatform,
@@ -41,18 +42,20 @@ export async function GET() {
 
   return NextResponse.json({
     mode: getProviderMode(),
-    simulationOnly: true,
+    simulationOnly: !LIVE_SOCIAL_OAUTH_ENABLED,
     durablePersistence: isDurableIntegrationConnectionsEnabled(),
     durableOauthState: isDurableOauthStateStoreEnabled(),
     platforms: await listConnectedAccountCards(orgId),
     foundation: listMarketingFoundationModules(),
     safety: {
-      simulation_only: true,
-      live_social_oauth_enabled: false,
+      simulation_only: !LIVE_SOCIAL_OAUTH_ENABLED,
+      live_social_oauth_enabled: LIVE_SOCIAL_OAUTH_ENABLED,
       highwater_public_launch: process.env.HIGHWATER_PUBLIC_LAUNCH ?? null,
       allow_live_ad_publish: process.env.ALLOW_LIVE_AD_PUBLISH === "true",
       publishes_disabled: true,
-      note: "SIMULATION ONLY for provider OAuth — connections may persist durably in Supabase mode. No live provider OAuth, posting, advertising, or budget spend.",
+      note: LIVE_SOCIAL_OAUTH_ENABLED
+        ? "Live Meta OAuth is enabled for Connected Accounts. Tokens stay encrypted server-side. Publishing and ad spend remain separately gated."
+        : "SIMULATION ONLY for provider OAuth — connections may persist durably in Supabase mode. No live provider OAuth, posting, advertising, or budget spend.",
     },
   });
 }
@@ -105,6 +108,17 @@ export async function POST(request: Request) {
           },
           { status: 503 },
         );
+      }
+      if (result.redirect === "external") {
+        // authorizeUrl is a Facebook dialog URL + opaque CSRF state — never includes tokens.
+        return NextResponse.json({
+          ok: true,
+          simulationOnly: false,
+          mode: result.mode,
+          redirect: "external",
+          authorizeUrl: result.authorizeUrl,
+          message: result.message,
+        });
       }
       return NextResponse.json({
         ok: true,

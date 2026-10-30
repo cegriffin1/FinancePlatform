@@ -7,6 +7,7 @@ import type {
   ProviderWebhookEvent,
   PublishAuditEvent,
   LiveAdProvider,
+  ProviderMode,
   SocialConnectionProvider,
 } from "@/domain/types/social-integrations";
 import { sealTokenBundle } from "@/infrastructure/security/credentialVault";
@@ -92,6 +93,11 @@ export function upsertSimConnection(input: {
   authorizedAssets?: string[];
   connectedBy?: string | null;
   platformHint?: string | null;
+  /** When provided (e.g. Meta LIVE seal), preserve instead of minting sim tokens. */
+  credentialRef?: string;
+  tokenExpiresAt?: string | null;
+  mode?: ProviderMode;
+  status?: ProviderCredentialRecord["status"];
 }): ProviderCredentialRecord {
   const store = getIntegrationStore();
   const existing = store.connections.find(
@@ -99,15 +105,22 @@ export function upsertSimConnection(input: {
   );
   const now = new Date().toISOString();
   const scopes = input.scopes ?? ["ads_management", "leads_retrieval"];
-  const credential_ref = sealTokenBundle({
-    access_token: `sim_access_${input.provider}`,
-    refresh_token: `sim_refresh_${input.provider}`,
-    expires_at: new Date(Date.now() + 7 * 24 * 3600_000).toISOString(),
-    scopes,
-  });
+  const defaultExpiry = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+  const tokenExpiresAt = input.tokenExpiresAt ?? defaultExpiry;
+  const credential_ref =
+    input.credentialRef ??
+    sealTokenBundle({
+      access_token: `sim_access_${input.provider}`,
+      refresh_token: `sim_refresh_${input.provider}`,
+      expires_at: tokenExpiresAt,
+      scopes,
+    });
+  const mode = input.mode ?? "SIMULATION";
+  const status = input.status ?? "CONNECTED";
 
   if (existing) {
-    existing.status = "CONNECTED";
+    existing.status = status;
+    existing.mode = mode;
     existing.display_account_name = input.accountName;
     existing.provider_account_id = input.accountId ?? existing.provider_account_id;
     existing.provider_business_id = input.businessId ?? existing.provider_business_id;
@@ -115,7 +128,7 @@ export function upsertSimConnection(input: {
     existing.last_refreshed_at = now;
     existing.last_synced_at = now;
     existing.last_error = null;
-    existing.token_expires_at = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+    existing.token_expires_at = tokenExpiresAt;
     existing.scopes = scopes;
     if (input.permissionsSummary) {
       existing.permissions_summary = input.permissionsSummary;
@@ -136,8 +149,8 @@ export function upsertSimConnection(input: {
     id: randomUUID(),
     organization_id: input.organizationId,
     provider: input.provider,
-    status: "CONNECTED",
-    mode: "SIMULATION",
+    status,
+    mode,
     provider_account_id: input.accountId ?? `${input.provider}_acct_001`,
     provider_business_id: input.businessId ?? `${input.provider}_biz_001`,
     scopes,
@@ -145,7 +158,7 @@ export function upsertSimConnection(input: {
     connected_at: now,
     last_refreshed_at: now,
     last_synced_at: now,
-    token_expires_at: new Date(Date.now() + 7 * 24 * 3600_000).toISOString(),
+    token_expires_at: tokenExpiresAt,
     credential_ref,
     last_error: null,
     permissions_summary: input.permissionsSummary ?? [

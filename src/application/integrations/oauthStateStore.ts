@@ -157,14 +157,32 @@ export function createOauthState(input: {
   return { state: encodeState(payload), payload };
 }
 
+/**
+ * Unit-test escape hatch only. Production LIVE Meta paths must never set this.
+ * Allows in-memory nonce store while still exercising HMAC + consume semantics.
+ */
+function allowMemoryOauthStateInUnitTest(): boolean {
+  return (
+    process.env.NODE_ENV === "test" &&
+    process.env.META_OAUTH_UNIT_TEST === "1"
+  );
+}
+
 export async function createOauthStateAsync(input: {
   organizationId: string;
   provider: string;
   platform: string;
   profileId?: string | null;
   ttlMs?: number;
+  /** When true (LIVE Meta), refuse silent in-memory fallback. */
+  requireDurable?: boolean;
 }): Promise<{ state: string; payload: OAuthStatePayload }> {
   if (!isDurableOauthStateStoreEnabled()) {
+    if (input.requireDurable && !allowMemoryOauthStateInUnitTest()) {
+      throw new Error(
+        "Durable OAuth state store required for LIVE provider authorization",
+      );
+    }
     return createOauthState(input);
   }
 

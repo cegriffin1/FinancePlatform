@@ -68,9 +68,23 @@ export function ConnectedAccountsPanel() {
       const json = await res.json();
       if (!res.ok) {
         setError(json.error ?? "Action failed");
-      } else if (json.redirect === "external" || json.authorizeUrl) {
-        // Hard stop: foundation must never navigate to provider OAuth.
-        setError("Live provider authorization is disabled in this foundation.");
+      } else if (json.redirect === "external" && typeof json.authorizeUrl === "string") {
+        // Open-redirect guard: only Meta OAuth dialog hosts are allowed.
+        try {
+          const target = new URL(json.authorizeUrl);
+          const allowed =
+            target.protocol === "https:" &&
+            (target.hostname === "www.facebook.com" ||
+              target.hostname === "facebook.com") &&
+            target.pathname.includes("/dialog/oauth");
+          if (!allowed) {
+            setError("Refusing redirect to an unexpected authorization host.");
+            return;
+          }
+          window.location.assign(target.toString());
+        } catch {
+          setError("Invalid authorization URL returned by the server.");
+        }
         return;
       }
       await refresh();
