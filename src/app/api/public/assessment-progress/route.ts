@@ -5,6 +5,7 @@ import { getSimStore, type SimLead } from "@/application/growth/simulationStore"
 import { ProfileCompletenessService } from "@/application/retirement/ProfileCompletenessService";
 import { LeadTemperatureService } from "@/application/retirement/LeadTemperatureService";
 import { PUBLIC_CONSENT_TEXT, PUBLIC_CONSENT_VERSION } from "@/domain/compliance/consent";
+import { enforcePublicConsumerLaunchGate } from "@/infrastructure/security/publicConsumerLaunchGate";
 import { rateLimit } from "@/lib/rateLimit";
 
 const draftSchema = z.object({
@@ -31,6 +32,9 @@ const draftSchema = z.object({
  */
 export async function POST(request: Request) {
   try {
+    const gated = await enforcePublicConsumerLaunchGate();
+    if (gated) return gated;
+
     const ip = request.headers.get("x-forwarded-for") ?? "local";
     if (!rateLimit(`assessment-progress:${ip}`, 20, 60_000)) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });

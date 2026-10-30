@@ -1,11 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { PASSWORD_SETUP_COOKIE } from "@/lib/auth/password-setup";
+import { userIsAuthorizedHighwaterLaunchTester } from "@/infrastructure/security/highwaterLaunchTester";
+import {
+  isPublicConsumerApiPath,
+  isPublicConsumerLaunchOpen,
+  isPublicConsumerPath,
+  LAUNCH_GATE_CLOSED_CODE,
+} from "@/lib/launchGate";
 
 /**
- * Session refresh + internal route protection.
- * Public marketing/assessment routes remain open.
- * Soft-no-op when Supabase env is absent (local UI without credentials).
+ * Session refresh + internal route protection + Highwater launch gate.
+ * Soft-no-op when Supabase env is absent (local UI without credentials),
+ * except public consumer paths remain fail-closed unless explicitly open.
  */
 export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,8 +26,27 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/marketplace") ||
     pathname.startsWith("/leads");
 
+  const consumerPath = isPublicConsumerPath(pathname);
+  const launchOpen = isPublicConsumerLaunchOpen();
+
   if (!url || !anon) {
-    // Without Supabase config, allow local simulation workspace
+    // Without Supabase config, keep local simulation workspace usable,
+    // but never open anonymous consumer intake unless explicitly allowed.
+    if (consumerPath && !launchOpen) {
+      if (isPublicConsumerApiPath(pathname)) {
+        return NextResponse.json(
+          {
+            error:
+              "Highwater Capital consumer intake is not publicly available yet.",
+            code: LAUNCH_GATE_CLOSED_CODE,
+          },
+          { status: 403 },
+        );
+      }
+      const unavailable = request.nextUrl.clone();
+      unavailable.pathname = "/assessment/unavailable";
+      return NextResponse.rewrite(unavailable);
+    }
     return NextResponse.next();
   }
 
@@ -54,6 +80,28 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Fail-closed Highwater / public consumer gate (server-side).
+  // Only active members of the configured tester org (default altus)
+  // with a system role may test while closed. Bare login is insufficient.
+  if (consumerPath && !launchOpen) {
+    const authorized = await userIsAuthorizedHighwaterLaunchTester(user);
+    if (!authorized) {
+      if (isPublicConsumerApiPath(pathname)) {
+        return NextResponse.json(
+          {
+            error:
+              "Highwater Capital consumer intake is not publicly available yet.",
+            code: LAUNCH_GATE_CLOSED_CODE,
+          },
+          { status: 403 },
+        );
+      }
+      const unavailable = request.nextUrl.clone();
+      unavailable.pathname = "/assessment/unavailable";
+      return NextResponse.rewrite(unavailable);
+    }
+  }
 
   const passwordSetupPending =
     request.cookies.get(PASSWORD_SETUP_COOKIE)?.value === "1";

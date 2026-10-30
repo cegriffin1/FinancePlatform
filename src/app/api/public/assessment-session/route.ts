@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rateLimit";
 import { RETIREMENT_OPPORTUNITY_V1 } from "@/application/retirement/assessmentDefinition";
 import { DataModeError } from "@/lib/dataMode";
 import { logAltusError, publicError } from "@/lib/observability";
+import { enforcePublicConsumerLaunchGate } from "@/infrastructure/security/publicConsumerLaunchGate";
 
 const attributionSchema = z.object({
   provider: z.string().nullable().optional(),
@@ -46,6 +47,9 @@ const resumeSchema = z.object({
 /** Create AssessmentSession — attribution captured immediately. */
 export async function POST(request: Request) {
   try {
+    const gated = await enforcePublicConsumerLaunchGate();
+    if (gated) return gated;
+
     const ip = request.headers.get("x-forwarded-for") ?? "local";
     if (!rateLimit(`assessment-session:${ip}`, 30, 60_000)) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
@@ -123,6 +127,9 @@ export async function POST(request: Request) {
 /** Progressive finalized answers — requires resume token. Never creates a lead. */
 export async function PATCH(request: Request) {
   try {
+    const gated = await enforcePublicConsumerLaunchGate();
+    if (gated) return gated;
+
     const ip = request.headers.get("x-forwarded-for") ?? "local";
     if (!rateLimit(`assessment-session-patch:${ip}`, 60, 60_000)) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
@@ -194,6 +201,9 @@ export async function PATCH(request: Request) {
 /** Secure resume by opaque token only — no session enumeration. */
 export async function GET(request: Request) {
   try {
+    const gated = await enforcePublicConsumerLaunchGate();
+    if (gated) return gated;
+
     const url = new URL(request.url);
     const parsed = resumeSchema.safeParse({
       resumeToken: url.searchParams.get("resumeToken"),

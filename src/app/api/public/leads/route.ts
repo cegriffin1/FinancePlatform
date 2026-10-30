@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { processPublicLeadSubmission } from "@/application/growth/leadPipeline";
 import { getSimStore } from "@/application/growth/simulationStore";
+import { enforcePublicConsumerLaunchGate } from "@/infrastructure/security/publicConsumerLaunchGate";
 import { rateLimit } from "@/lib/rateLimit";
 
 const bodySchema = z.object({
@@ -55,6 +56,9 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const gated = await enforcePublicConsumerLaunchGate();
+    if (gated) return gated;
+
     const ip = request.headers.get("x-forwarded-for") ?? "local";
     if (!rateLimit(`public-leads:${ip}`, 8, 60_000)) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });

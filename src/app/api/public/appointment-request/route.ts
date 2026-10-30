@@ -7,6 +7,7 @@ import { validateAppointmentPreference } from "@/domain/appointments/preferredRe
 import { isSupabaseDataMode } from "@/lib/dataMode";
 import { rateLimit } from "@/lib/rateLimit";
 import { createSupabaseServiceClient } from "@/infrastructure/supabase/admin";
+import { enforcePublicConsumerLaunchGate } from "@/infrastructure/security/publicConsumerLaunchGate";
 
 const bodySchema = z.object({
   organizationSlug: z.string().min(1),
@@ -22,6 +23,9 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const gated = await enforcePublicConsumerLaunchGate();
+    if (gated) return gated;
+
     const ip = request.headers.get("x-forwarded-for") ?? "local";
     if (!rateLimit(`public-appt-req:${ip}`, 6, 60_000)) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });

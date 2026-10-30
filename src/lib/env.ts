@@ -20,6 +20,14 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  /**
+   * Highwater public consumer launch.
+   * Absent / anything other than "open" = fail-closed (anonymous denied).
+   * Authorized ALTUS org members may still test when closed.
+   */
+  HIGHWATER_PUBLIC_LAUNCH: z.enum(["open", "closed"]).optional(),
+  /** Org slug allowed to test while launch gate is closed (default altus). */
+  HIGHWATER_LAUNCH_TESTER_ORG_SLUG: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -36,6 +44,14 @@ export function getEnv(): AppEnv {
     ALTUS_DATA_MODE: process.env.ALTUS_DATA_MODE ?? "simulation",
     ALTUS_ALLOW_UNAUTHENTICATED_SIM:
       process.env.ALTUS_ALLOW_UNAUTHENTICATED_SIM === "true" ? "true" : "false",
+    HIGHWATER_PUBLIC_LAUNCH:
+      process.env.HIGHWATER_PUBLIC_LAUNCH === "open"
+        ? "open"
+        : process.env.HIGHWATER_PUBLIC_LAUNCH === "closed"
+          ? "closed"
+          : undefined,
+    HIGHWATER_LAUNCH_TESTER_ORG_SLUG:
+      process.env.HIGHWATER_LAUNCH_TESTER_ORG_SLUG || undefined,
   });
 }
 

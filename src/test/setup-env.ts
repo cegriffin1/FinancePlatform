@@ -16,3 +16,5 @@ for (const key of CLEAR) {
 
 process.env.ALTUS_DATA_MODE = "simulation";
 process.env.ALTUS_ALLOW_UNAUTHENTICATED_SIM = "false";
+// Unit/integration suites exercise public consumer APIs directly.
+process.env.HIGHWATER_PUBLIC_LAUNCH = "open";
